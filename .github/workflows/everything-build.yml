@@ -152,11 +152,11 @@ jobs:
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Force -Path "$env:WORKING_DIR\artifacts\staging" | Out-Null
-        Get-ChildItem $env:APPX_PACKAGE_DIR -Recurse -Include *.msixbundle, *.msix, *.cer, Add-AppDevPackage.ps1, *.txt -Exclude *Dependencies* |
-          ForEach-Object {
-            $dest = Join-Path "$env:WORKING_DIR\artifacts\staging" $_.Name
-            Copy-Item $_.FullName $dest -Force
-          }
+        # Zip the full packaging output: the bundle, the test-signed cert, the
+        # Add-AppDevPackage.ps1 install script and the dependency msix packages.
+        Compress-Archive `
+          -Path "$env:APPX_PACKAGE_DIR\*" `
+          -DestinationPath "$env:WORKING_DIR\artifacts\staging\Files-Everything-Setup-$env:PLATFORM.zip"
         Get-ChildItem "$env:WORKING_DIR\artifacts\staging"
 
     - name: Upload packages to the artifact
