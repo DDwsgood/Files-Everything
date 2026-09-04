@@ -3,7 +3,6 @@
 
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace Files.App.Utils.Storage
 {
@@ -49,8 +48,9 @@ namespace Files.App.Utils.Storage
 		[LibraryImport(DllName)]
 		private static partial uint Everything_GetNumResults();
 
-		[LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf16)]
-		private static partial void Everything_GetResultFullPathNameW(uint nIndex, StringBuilder lpString, uint nMaxCount);
+		// LibraryImport does not support StringBuilder; results are read into a raw buffer.
+		[LibraryImport(DllName)]
+		private static unsafe partial void Everything_GetResultFullPathNameW(uint nIndex, char* lpString, uint nMaxCount);
 
 		[LibraryImport(DllName)]
 		[return: MarshalAs(UnmanagedType.Bool)]
@@ -73,14 +73,14 @@ namespace Files.App.Utils.Storage
 
 			lock (Gate)
 			{
-				if (TrySearch(search, maxResults, out results))
+				if (TrySearch(search, maxResults, out var results))
 					return results;
 			}
 
 			return null;
 		}
 
-		private static bool TrySearch(string search, uint maxResults, out List<string> results)
+		private static unsafe bool TrySearch(string search, uint maxResults, out List<string> results)
 		{
 			results = [];
 
@@ -106,13 +106,16 @@ namespace Files.App.Utils.Storage
 
 			uint numResults = Everything_GetNumResults();
 
-			var sb = new StringBuilder(32768);
-			for (uint i = 0; i < numResults; i++)
+			var buffer = new char[32768];
+			fixed (char* bufferPtr = buffer)
 			{
-				sb.Clear();
-				Everything_GetResultFullPathNameW(i, sb, (uint)sb.Capacity);
-				if (sb.Length > 0)
-					results.Add(sb.ToString());
+				for (uint i = 0; i < numResults; i++)
+				{
+					Everything_GetResultFullPathNameW(i, bufferPtr, (uint)buffer.Length);
+					int length = Array.IndexOf(buffer, '\0');
+					if (length > 0)
+						results.Add(new string(buffer, 0, length));
+				}
 			}
 
 			return true;
