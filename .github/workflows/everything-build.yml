@@ -140,7 +140,7 @@ jobs:
           -p:AppxBundlePlatforms=$env:PLATFORM `
           -p:AppxBundle=Always `
           -p:GenerateAppxPackageOnBuild=true `
-          -p:UapAppxPackageBuildMode=SideloadOnly `
+          -p:UapAppxPackageBuildMode=Sideload `
           -p:AppxPackageDir=$env:APPX_PACKAGE_DIR `
           -p:AppxPackageSigningEnabled=true `
           -p:PackageCertificateKeyFile=$env:APPX_SELFSIGNED_CERT_PATH `
