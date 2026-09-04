@@ -137,11 +137,10 @@ jobs:
           -t:Build `
           -p:Configuration=Release `
           -p:Platform=$env:PLATFORM `
-          -p:AppxBundlePlatforms=$env:PLATFORM `
-          -p:AppxBundle=Always `
           -p:GenerateAppxPackageOnBuild=true `
           -p:UapAppxPackageBuildMode=Sideload `
           -p:AppxPackageDir=$env:APPX_PACKAGE_DIR `
+          -p:AppxBundle=Never `
           -p:AppxPackageSigningEnabled=true `
           -p:PackageCertificateKeyFile=$env:APPX_SELFSIGNED_CERT_PATH `
           -p:PackageCertificatePassword="" `
