@@ -43,6 +43,9 @@
 
     <PropertyGroup>
         <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+        <DefineConstants Condition="'$(Platform)' == 'x86'">$(DefineConstants);EVERYTHING_X86</DefineConstants>
+        <DefineConstants Condition="'$(Platform)' == 'x64'">$(DefineConstants);EVERYTHING_X64</DefineConstants>
+        <DefineConstants Condition="'$(Platform)' == 'arm64'">$(DefineConstants);EVERYTHING_ARM64</DefineConstants>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(SENTRY_AUTH_TOKEN)' != ''">
@@ -91,6 +94,18 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="7zArm64.dll" Condition="'$(Platform)' == 'arm64'">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Everything32.dll" Condition="'$(Platform)' == 'x86'">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Everything64.dll" Condition="'$(Platform)' == 'x64'">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="EverythingARM64.dll" Condition="'$(Platform)' == 'arm64'">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Everything-SDK-License.txt">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>
