@@ -3,6 +3,7 @@
 
 using CommunityToolkit.WinUI;
 using Files.App.Controls;
+using Files.App.Helpers.ContextFlyouts;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
@@ -52,6 +53,7 @@ namespace Files.App.Views
 			UserSettingsService = Ioc.Default.GetRequiredService<IUserSettingsService>();
 			SidebarAdaptiveViewModel = Ioc.Default.GetRequiredService<SidebarViewModel>();
 			SidebarAdaptiveViewModel.PaneFlyout = (MenuFlyout)Resources["SidebarContextMenu"];
+			MenuFlyoutKeyboardHelper.Attach(SidebarAdaptiveViewModel.PaneFlyout);
 			ViewModel = Ioc.Default.GetRequiredService<MainPageViewModel>();
 
 			if (AppLanguageHelper.IsPreferredLanguageRtl)

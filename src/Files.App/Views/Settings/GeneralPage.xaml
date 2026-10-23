@@ -338,6 +338,87 @@
 				<ToggleSwitch AutomationProperties.Name="{helpers:ResourceString Name=SettingsContextMenuOverflow}" IsOn="{x:Bind ViewModel.MoveShellExtensionsToSubMenu, Mode=TwoWay}" />
 			</wctcontrols:SettingsCard>
 
+			<!--  Hidden shell extension items  -->
+			<wctcontrols:SettingsExpander
+				Description="{helpers:ResourceString Name=SettingsContextMenuShellExtensionsDescription}"
+				Header="{helpers:ResourceString Name=SettingsContextMenuShellExtensions}"
+				IsExpanded="False">
+				<wctcontrols:SettingsExpander.HeaderIcon>
+					<FontIcon Glyph="&#xE712;" />
+				</wctcontrols:SettingsExpander.HeaderIcon>
+				<wctcontrols:SettingsExpander.ItemsHeader>
+					<Grid
+						Padding="8"
+						HorizontalAlignment="Stretch"
+						Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+						RowSpacing="4">
+						<Grid.RowDefinitions>
+							<RowDefinition Height="Auto" />
+							<RowDefinition Height="Auto" />
+						</Grid.RowDefinitions>
+
+						<!--  New hidden item  -->
+						<Grid
+							Margin="12,0,12,0"
+							ColumnSpacing="8">
+							<Grid.ColumnDefinitions>
+								<ColumnDefinition Width="*" />
+								<ColumnDefinition Width="Auto" />
+							</Grid.ColumnDefinitions>
+							<TextBox
+								PlaceholderText="{helpers:ResourceString Name=SettingsContextMenuShellExtensionsPlaceholder}"
+								KeyDown="HiddenShellExtensionTextBox_KeyDown"
+								Text="{x:Bind ViewModel.NewHiddenShellExtension, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+							<Button
+								Grid.Column="1"
+								AutomationProperties.Name="{helpers:ResourceString Name=Add}"
+								Click="AddHiddenShellExtension_Click"
+								Content="{helpers:ResourceString Name=Add}" />
+						</Grid>
+
+						<!--  Hidden items  -->
+						<ListView
+							Grid.Row="1"
+							Margin="12,0,12,0"
+							MaxHeight="200"
+							ItemsSource="{x:Bind ViewModel.HiddenShellExtensions, Mode=OneWay}"
+							SelectionMode="None">
+							<ListView.ItemContainerStyle>
+								<Style BasedOn="{StaticResource DefaultListViewItemStyle}" TargetType="ListViewItem">
+									<Setter Property="Margin" Value="0" />
+									<Setter Property="Padding" Value="12,0" />
+								</Style>
+							</ListView.ItemContainerStyle>
+							<ListView.ItemTemplate>
+								<DataTemplate>
+									<Grid HorizontalAlignment="Stretch">
+										<TextBlock
+											VerticalAlignment="Center"
+											Text="{Binding}"
+											TextTrimming="CharacterEllipsis" />
+										<Button
+											HorizontalAlignment="Right"
+											AutomationProperties.Name="{helpers:ResourceString Name=Remove}"
+											Click="RemoveHiddenShellExtension_Click"
+											ToolTipService.ToolTip="{helpers:ResourceString Name=Remove}">
+											<FontIcon FontSize="16" Glyph="&#xE74D;" />
+										</Button>
+									</Grid>
+								</DataTemplate>
+							</ListView.ItemTemplate>
+						</ListView>
+					</Grid>
+				</wctcontrols:SettingsExpander.ItemsHeader>
+				<wctcontrols:SettingsExpander.Items>
+					<wctcontrols:SettingsCard Header="{helpers:ResourceString Name=SettingsContextMenuShellExtensionsClear}">
+						<Button
+							AutomationProperties.Name="{helpers:ResourceString Name=Clear}"
+							Click="ClearHiddenShellExtensions_Click"
+							Content="{helpers:ResourceString Name=Clear}" />
+					</wctcontrols:SettingsCard>
+				</wctcontrols:SettingsExpander.Items>
+			</wctcontrols:SettingsExpander>
+
 			<!--  Scrolling  -->
 			<TextBlock
 				Padding="0,16,0,4"

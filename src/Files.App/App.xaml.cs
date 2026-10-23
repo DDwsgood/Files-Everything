@@ -31,6 +31,7 @@ namespace Files.App
 		private static FlyoutBase? _LastOpenedFlyout;
 		public static FlyoutBase? LastOpenedFlyout
 		{
+			get => _LastOpenedFlyout;
 			set
 			{
 				_LastOpenedFlyout = value;

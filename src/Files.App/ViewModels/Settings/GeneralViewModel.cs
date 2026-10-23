@@ -106,6 +106,9 @@ namespace Files.App.ViewModels.Settings
 
 			PagesOnStartupList.CollectionChanged += PagesOnStartupList_CollectionChanged;
 
+			HiddenShellExtensions = new(UserSettingsService.GeneralSettingsService.HiddenShellExtensions ?? []);
+			HiddenShellExtensions.CollectionChanged += HiddenShellExtensions_CollectionChanged;
+
 			// ShellPaneArrangement
 			ShellPaneArrangementTypes.Add(ShellPaneArrangement.Vertical, Strings.Vertical.GetLocalizedResource());
 			ShellPaneArrangementTypes.Add(ShellPaneArrangement.Horizontal, Strings.Horizontal.GetLocalizedResource());
@@ -458,6 +461,41 @@ namespace Files.App.ViewModels.Settings
 			}
 		}
 
+		public ObservableCollection<string> HiddenShellExtensions { get; }
+
+		private string newHiddenShellExtension = string.Empty;
+		public string NewHiddenShellExtension
+		{
+			get => newHiddenShellExtension;
+			set => SetProperty(ref newHiddenShellExtension, value);
+		}
+
+		public void AddHiddenShellExtension()
+		{
+			var entry = NewHiddenShellExtension.Trim();
+			if (string.IsNullOrEmpty(entry))
+				return;
+
+			if (!HiddenShellExtensions.Any(x => string.Equals(x, entry, StringComparison.OrdinalIgnoreCase)))
+				HiddenShellExtensions.Add(entry);
+
+			NewHiddenShellExtension = string.Empty;
+		}
+
+		public void RemoveHiddenShellExtension(string entry)
+		{
+			var existing = HiddenShellExtensions.FirstOrDefault(x => string.Equals(x, entry, StringComparison.OrdinalIgnoreCase));
+			if (existing is not null)
+				HiddenShellExtensions.Remove(existing);
+		}
+
+		private void HiddenShellExtensions_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+		{
+			UserSettingsService.GeneralSettingsService.HiddenShellExtensions = HiddenShellExtensions.Count > 0
+				? HiddenShellExtensions.ToList()
+				: null;
+		}
+
 		public bool ShowPinToSideBar
 		{
 			get => UserSettingsService.GeneralSettingsService.ShowPinToSideBar;
@@ -608,6 +646,8 @@ namespace Files.App.ViewModels.Settings
 			if (!disposed)
 			{
 				disposed = true;
+
+				HiddenShellExtensions.CollectionChanged -= HiddenShellExtensions_CollectionChanged;
 
 				GC.SuppressFinalize(this);
 			}

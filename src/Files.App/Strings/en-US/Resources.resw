@@ -713,6 +713,18 @@
   <data name="SettingsContextMenuOverflow" xml:space="preserve">
     <value>Move shell extensions into a sub menu</value>
   </data>
+  <data name="SettingsContextMenuShellExtensions" xml:space="preserve">
+    <value>Shell extension menu items</value>
+  </data>
+  <data name="SettingsContextMenuShellExtensionsClear" xml:space="preserve">
+    <value>Remove all hidden items</value>
+  </data>
+  <data name="SettingsContextMenuShellExtensionsDescription" xml:space="preserve">
+    <value>Hide items added by shell extensions. Add the command name or the label as it appears in the menu.</value>
+  </data>
+  <data name="SettingsContextMenuShellExtensionsPlaceholder" xml:space="preserve">
+    <value>Command name or menu label</value>
+  </data>
   <data name="ShowConfirmationWhenDeletingItems" xml:space="preserve">
     <value>Show confirmation dialog when deleting items</value>
   </data>

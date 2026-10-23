@@ -97,8 +97,31 @@ namespace Files.App.Helpers
 					"{9F156763-7844-4DC4-B2B1-901F640F5155}", // Open in Terminal
 				};
 
+				// User-configured entries are matched against both the command name and the label in the menu.
+				var hiddenItems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+				foreach (var entry in UserSettingsService.GeneralSettingsService.HiddenShellExtensions ?? [])
+				{
+					if (string.IsNullOrWhiteSpace(entry))
+						continue;
+
+					var hiddenEntry = entry.Trim();
+					hiddenItems.Add(hiddenEntry);
+
+					// Shell labels carry the mnemonic marker; store and match the plain label too.
+					hiddenItems.Add(hiddenEntry.Replace("&", string.Empty));
+				}
+
+				bool IsHidden(string? value)
+				{
+					if (value is not { Length: > 0 })
+						return false;
+
+					return hiddenItems.Contains(value) || hiddenItems.Contains(value.Replace("&", string.Empty));
+				}
+
 				bool filterMenuItemsImpl(string? menuItem) => !string.IsNullOrEmpty(menuItem)
-					&& (knownItems.Contains(menuItem) || (!showOpenMenu && menuItem.Equals("open", StringComparison.OrdinalIgnoreCase)));
+					&& (knownItems.Contains(menuItem) || IsHidden(menuItem) || (!showOpenMenu && menuItem.Equals("open", StringComparison.OrdinalIgnoreCase)));
 
 				return filterMenuItemsImpl;
 			}

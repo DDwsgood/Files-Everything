@@ -771,20 +771,20 @@ namespace Files.App.Views.Layouts
 						Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(ColorHelpers.FromHex(tag.Color)),
 					},
 				};
-				toggle.Click += async (s, _) =>
+				toggle.Command = new AsyncRelayCommand(async () =>
 				{
-					var toggled = (ToggleMenuFlyoutItem)s;
-					var tv = (TagViewModel)toggled.Tag;
+					// Command-backed so the item can also be activated by its mnemonic key.
+					var tv = (TagViewModel)toggle.Tag;
 					foreach (var it in selected.Where(i => i is not null))
 					{
 						var existing = it.FileTags ?? [];
-						it.FileTags = toggled.IsChecked
+						it.FileTags = toggle.IsChecked
 							? (existing.Contains(tv.Uid) ? existing : [.. existing, tv.Uid])
 							: existing.Where(u => u != tv.Uid).ToArray();
 					}
 					if (ParentShellPageInstance is { } parentShellPage)
 						await parentShellPage.GetRequiredShellViewModel().RefreshTagGroups();
-				};
+				});
 				subItem.Items.Add(toggle);
 			}
 
@@ -793,11 +793,11 @@ namespace Files.App.Views.Layouts
 			{
 				Text = Strings.RemoveTags.GetLocalizedResource(),
 				IsEnabled = selected.Any(x => x?.FileTags is { Length: > 0 }),
-			};
-			removeTags.Click += async (_, _) =>
-			{
-				if (await FileTagsHelper.RemoveTagsAsync(selected) && ParentShellPageInstance is { } parentShellPage)
-					await parentShellPage.GetRequiredShellViewModel().RefreshTagGroups();
+				Command = new AsyncRelayCommand(async () =>
+				{
+					if (await FileTagsHelper.RemoveTagsAsync(selected) && ParentShellPageInstance is { } parentShellPage)
+						await parentShellPage.GetRequiredShellViewModel().RefreshTagGroups();
+				}),
 			};
 			subItem.Items.Add(removeTags);
 

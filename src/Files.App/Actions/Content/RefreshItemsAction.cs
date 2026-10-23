@@ -20,6 +20,9 @@ namespace Files.App.Actions
 		public RichGlyph Glyph
 			=> new("\uE72C");
 
+		public string AccessKey
+			=> "E";
+
 		public HotKey HotKey
 			=> new(Keys.R, KeyModifiers.Ctrl);
 

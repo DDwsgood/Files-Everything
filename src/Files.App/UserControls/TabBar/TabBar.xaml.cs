@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using CommunityToolkit.WinUI;
+using Files.App.Helpers.ContextFlyouts;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -309,6 +310,8 @@ namespace Files.App.UserControls.TabBar
 		[DynamicWindowsRuntimeCast(typeof(MenuFlyout))]
 		private void TabItemContextMenu_Opening(object sender, object e)
 		{
+			MenuFlyoutKeyboardHelper.Attach(sender as MenuFlyout);
+
 			MenuItemMoveTabToNewWindow.IsEnabled = Items.Count > 1;
 			SelectedTabItemChanged?.Invoke(null, ((MenuFlyout)sender).Target.DataContext as TabBarItem);
 		}

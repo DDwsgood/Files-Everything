@@ -24,7 +24,7 @@ namespace Files.App.Actions
 			=> "InnerNavigationToolbarPropertiesButton";
 
 		public string AccessKey
-			=> "O";
+			=> "R";
 
 		public HotKey HotKey
 			=> new(Keys.Enter, KeyModifiers.Alt);

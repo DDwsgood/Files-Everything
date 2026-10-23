@@ -1,6 +1,7 @@
 // Copyright (c) Files Community
 // Licensed under the MIT License.
 
+using Files.App.Helpers.ContextFlyouts;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -94,7 +95,10 @@ namespace Files.App.Views
 		private void ScrollViewer_RightTapped(object sender, RightTappedRoutedEventArgs e)
 		{
 			if (sender is FrameworkElement element)
+			{
+				MenuFlyoutKeyboardHelper.Attach(HomePageContextMenu);
 				HomePageContextMenu.ShowAt(element, e.GetPosition(element));
+			}
 
 			e.Handled = true;
 		}

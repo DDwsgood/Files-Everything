@@ -498,6 +498,9 @@ namespace Files.App.Helpers.ContextFlyouts
 				if (Flyout.XamlRoot is null)
 					return;
 
+				// Items created outside the model helper (tags, overflow, primary row) need the handler too.
+				MenuFlyoutKeyboardHelper.AttachItems(Flyout.Items);
+
 				Popup? popup = null;
 				MenuFlyoutPresenter? presenter = null;
 				foreach (var openPopup in Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(Flyout.XamlRoot))
@@ -523,6 +526,8 @@ namespace Files.App.Helpers.ContextFlyouts
 				// The presenter is a nameless container; keep it out of the tab order (the items are the
 				// focus stops) so accessibility tooling doesn't flag a focusable element without a name.
 				presenter.IsTabStop = false;
+
+				MenuFlyoutKeyboardHelper.Attach(presenter);
 
 				// Cap the height to the visible area so late-loading shell extensions scroll instead of growing
 				// the menu off-screen and repositioning it.
@@ -795,6 +800,9 @@ namespace Files.App.Helpers.ContextFlyouts
 			// The row's min width sets the whole main menu's min width, reserving the measured content width
 			// up-front so the accelerator column cannot widen it after it opens.
 			var hostItem = new MenuFlyoutItem { Template = primaryRowTemplate, Tag = row, MinWidth = estimatedWidth };
+
+			// Keys pressed while an icon button of the row has focus bubble up to the host item.
+			MenuFlyoutKeyboardHelper.Attach(hostItem);
 
 			// The host draws nothing itself; keep it out of the accessibility tree so screen readers announce
 			// the named icon buttons instead of an empty menu item.

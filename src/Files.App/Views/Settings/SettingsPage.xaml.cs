@@ -3,6 +3,7 @@
 
 using CommunityToolkit.WinUI.Controls;
 using Files.App.Controls;
+using Files.App.Helpers.ContextFlyouts;
 using Files.App.ViewModels.Settings;
 using Files.App.Views.Settings;
 using Microsoft.UI.Xaml;
@@ -149,7 +150,10 @@ namespace Files.App.Views
 		private void Grid_RightTapped(object sender, RightTappedRoutedEventArgs e)
 		{
 			if (sender is FrameworkElement element)
+			{
+				MenuFlyoutKeyboardHelper.Attach(SettingsPageContextMenu);
 				SettingsPageContextMenu.ShowAt(element, e.GetPosition(element));
+			}
 
 			e.Handled = true;
 		}

@@ -44,11 +44,15 @@ namespace Files.App.Helpers.ContextFlyouts
 
 		public static MenuFlyoutItemBase GetMenuItem(ContextMenuFlyoutItemViewModel item)
 		{
-			return item.ItemType switch
+			var menuItem = item.ItemType switch
 			{
 				ContextMenuFlyoutItemType.Separator => new MenuFlyoutSeparator(),
 				_ => GetMenuFlyoutItem(item),
 			};
+
+			MenuFlyoutKeyboardHelper.Attach(menuItem);
+
+			return menuItem;
 		}
 
 		[DynamicWindowsRuntimeCast(typeof(Style))]

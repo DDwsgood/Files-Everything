@@ -1,6 +1,7 @@
 // Copyright (c) Files Community
 // Licensed under the MIT License.
 
+using Files.App.Helpers.ContextFlyouts;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -146,6 +147,7 @@ namespace Files.App.UserControls
 				Command = item.RemoveCommand
 			});
 
+			MenuFlyoutKeyboardHelper.Attach(menuFlyout);
 			menuFlyout.ShowAt(widgetCardItem);
 			e.Handled = true;
 		}

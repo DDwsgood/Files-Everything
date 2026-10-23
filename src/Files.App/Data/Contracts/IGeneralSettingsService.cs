@@ -211,6 +211,12 @@ namespace Files.App.Data.Contracts
 		bool MoveShellExtensionsToSubMenu { get; set; }
 
 		/// <summary>
+		/// Gets or sets the shell extension menu items that are hidden in context menus. Each entry is matched
+		/// against the command name or the label of the item as returned by the shell.
+		/// </summary>
+		List<string>? HiddenShellExtensions { get; set; }
+
+		/// <summary>
 		/// Gets or sets a value indicating whether or not to show the edit tags menu.
 		/// </summary>
 		bool ShowEditTagsMenu { get; set; }
