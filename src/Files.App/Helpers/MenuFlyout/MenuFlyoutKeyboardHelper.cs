@@ -13,14 +13,11 @@ namespace Files.App.Helpers.ContextFlyouts
 	/// <summary>
 	/// Provides Windows 10 style mnemonic activation for menu flyouts: while a menu is open, pressing an item's
 	/// access key runs that item without holding Alt, which WinUI's built-in access key mode requires.
-	/// Menu keys are handled three ways because WinUI's own menu keyboard handling consumes key events before
-	/// they reach ordinary element handlers: single-key keyboard accelerators, a presenter key handler and an
-	/// item key handler. A shared guard makes sure only the first one that fires wins.
+	/// Keys are handled through single-key keyboard accelerators and through key handlers on the menu items and
+	/// the menu presenter, because the presenter consumes key input itself before ordinary handlers see it.
 	/// </summary>
 	internal static class MenuFlyoutKeyboardHelper
 	{
-		// Two handlers can observe the same key press (an accelerator and a key handler, or an item and its
-		// presenter). Remember the last activation so the same item cannot run twice for one press.
 		private static object? lastActivatedTarget;
 		private static long lastActivatedTick;
 
@@ -73,6 +70,16 @@ namespace Files.App.Helpers.ContextFlyouts
 		}
 
 		/// <summary>
+		/// Runs the open-time initialization for a flyout that is attached while it is already opening.
+		/// </summary>
+		public static void PrepareOpen(MenuFlyout flyout)
+		{
+			App.LastOpenedFlyout = flyout;
+			AttachItems(flyout.Items);
+			ApplyAccelerators(flyout.Items);
+		}
+
+		/// <summary>
 		/// Enables mnemonic activation on the given items and on the items of their submenus.
 		/// </summary>
 		public static void AttachItems(IEnumerable<MenuFlyoutItemBase> items)
@@ -93,32 +100,61 @@ namespace Files.App.Helpers.ContextFlyouts
 		/// </summary>
 		public static void ApplyAccelerators(IEnumerable<MenuFlyoutItemBase> items)
 		{
-			var usedKeys = new HashSet<VirtualKey>();
-			ApplyAccelerators(items, usedKeys);
+			ClearAccelerators(items);
+			ApplyLevelAccelerators(items);
 		}
 
-		private static void ApplyAccelerators(IEnumerable<MenuFlyoutItemBase> items, HashSet<VirtualKey> usedKeys)
+		/// <summary>
+		/// Removes the accelerators this helper registered, so no single-key shortcut stays live while a menu is closed.
+		/// </summary>
+		public static void ClearAccelerators(IEnumerable<MenuFlyoutItemBase> items)
+		{
+			foreach (var item in items)
+			{
+				ClearElementAccelerators(item);
+
+				// The primary command row hosts its commands as buttons inside the item.
+				if (item is MenuFlyoutItem { Tag: Panel primaryRow })
+					foreach (var button in primaryRow.Children.OfType<Button>())
+						ClearElementAccelerators(button);
+
+				if (item is MenuFlyoutSubItem subItem)
+					ClearAccelerators(subItem.Items);
+			}
+		}
+
+		private static void ClearElementAccelerators(UIElement element)
+		{
+			if (element.GetValue(AddedAcceleratorsProperty) is not List<KeyboardAccelerator> added)
+				return;
+
+			foreach (var accelerator in added)
+				element.KeyboardAccelerators.Remove(accelerator);
+
+			added.Clear();
+		}
+
+		private static void ApplyLevelAccelerators(IEnumerable<MenuFlyoutItemBase> items)
 		{
 			foreach (var entry in BuildLevelEntries(items))
 			{
-				var key = (VirtualKey)entry.Key;
-				if (!usedKeys.Add(key))
-					continue;
-
-				// The primary row is rebuilt after a placement flip; keep the already registered keys.
-				if (entry.Element.GetValue(AddedAcceleratorsProperty) is List<KeyboardAccelerator> existing &&
-					existing.Any(x => x.Key == key && x.Modifiers is VirtualKeyModifiers.None))
-					continue;
-
 				var accelerator = new KeyboardAccelerator
 				{
-					Key = key,
+					Key = (VirtualKey)entry.Key,
 					Modifiers = VirtualKeyModifiers.None,
 				};
+
+				var element = entry.Element;
+				var key = entry.Key;
+				var fallback = entry.Activate;
 				accelerator.Invoked += (_, args) =>
 				{
+					// Stay inert while no menu is open, so a leftover accelerator cannot swallow a key.
+					if (App.LastOpenedFlyout is not { IsOpen: true })
+						return;
+
 					args.Handled = true;
-					entry.Activate();
+					Activate(element, key, fallback);
 				};
 
 				entry.Element.KeyboardAccelerators.Add(accelerator);
@@ -136,27 +172,7 @@ namespace Files.App.Helpers.ContextFlyouts
 			foreach (var item in items)
 			{
 				if (item is MenuFlyoutSubItem subItem)
-					ApplyAccelerators(subItem.Items, usedKeys);
-			}
-		}
-
-		/// <summary>
-		/// Removes the accelerators this helper registered, so no single-key shortcut stays live while a menu is closed.
-		/// </summary>
-		public static void ClearAccelerators(IEnumerable<MenuFlyoutItemBase> items)
-		{
-			foreach (var item in items)
-			{
-				if (item.GetValue(AddedAcceleratorsProperty) is List<KeyboardAccelerator> added)
-				{
-					foreach (var accelerator in added)
-						item.KeyboardAccelerators.Remove(accelerator);
-
-					added.Clear();
-				}
-
-				if (item is MenuFlyoutSubItem subItem)
-					ClearAccelerators(subItem.Items);
+					ApplyLevelAccelerators(subItem.Items);
 			}
 		}
 
@@ -165,9 +181,7 @@ namespace Files.App.Helpers.ContextFlyouts
 			if (sender is not MenuFlyout flyout)
 				return;
 
-			App.LastOpenedFlyout = flyout;
-			AttachItems(flyout.Items);
-			ApplyAccelerators(flyout.Items);
+			PrepareOpen(flyout);
 		}
 
 		private static void Flyout_Closed(object? sender, object e)
@@ -187,7 +201,16 @@ namespace Files.App.Helpers.ContextFlyouts
 
 		private static void Item_KeyDown(object sender, KeyRoutedEventArgs e)
 		{
+			// Preview and bubble handlers, and the item and presenter handlers, all receive the same key
+			// event; the first one that acts marks it handled.
+			if (e.Handled)
+				return;
+
 			if (sender is not UIElement source || !TryGetCharacter(e.Key, out char character))
+				return;
+
+			// Only act while one of our menus is open.
+			if (App.LastOpenedFlyout is not { IsOpen: true })
 				return;
 
 			// Leave Alt, Ctrl and Win shortcuts alone. Alt is how WinUI's own access key mode works.
@@ -195,17 +218,45 @@ namespace Files.App.Helpers.ContextFlyouts
 				IsModifierDown(VirtualKey.LeftWindows) || IsModifierDown(VirtualKey.RightWindows))
 				return;
 
-			var level = GetMenuLevel(source);
-			if (level is null)
-				return;
-
-			var entry = BuildLevelEntries(level.Items.OfType<MenuFlyoutItemBase>())
-				.FirstOrDefault(x => x.Key == character);
-			if (entry.Activate is null)
+			if (GetMenuLevel(source) is not { } level || ResolveActivation(level, character) is not { } activation)
 				return;
 
 			e.Handled = true;
-			entry.Activate();
+			activation();
+		}
+
+		/// <summary>
+		/// Runs an accelerator against the menu level that currently has focus, so a submenu key wins over the
+		/// same key of its parent menu. The entry that registered the accelerator is only used when the focused
+		/// level cannot be determined at all.
+		/// </summary>
+		private static void Activate(UIElement source, char character, Action fallback)
+		{
+			if (App.LastOpenedFlyout is not { IsOpen: true })
+				return;
+
+			if (source.XamlRoot is { } xamlRoot &&
+				FocusManager.GetFocusedElement(xamlRoot) is DependencyObject focused &&
+				GetOwnerItemsControl(focused) is { } level)
+			{
+				ResolveActivation(level, character)?.Invoke();
+				return;
+			}
+
+			fallback();
+		}
+
+		private static Action? ResolveActivation(ItemsControl level, char character)
+		{
+			var matches = BuildLevelEntries(level.Items.OfType<MenuFlyoutItemBase>())
+				.Where(x => x.Key == character)
+				.ToList();
+
+			if (matches.Count is 0)
+				return null;
+
+			// Several items declare the same key; the first one wins.
+			return matches[0].Activate;
 		}
 
 		private static bool IsModifierDown(VirtualKey key)
@@ -253,7 +304,7 @@ namespace Files.App.Helpers.ContextFlyouts
 
 		/// <summary>
 		/// Assigns one key per actionable item of a menu level: declared access keys first, then the first free
-		/// character of the label, matching how explorer assigns mnemonics.
+		/// character of the label. Declared keys of the primary row buttons are reserved up front as well.
 		/// </summary>
 		private static List<(string Text, char Key, UIElement Element, Action Activate)> BuildLevelEntries(IEnumerable<MenuFlyoutItemBase> items)
 		{
@@ -287,8 +338,13 @@ namespace Files.App.Helpers.ContextFlyouts
 						.Where(x => x.IsEnabled && GetExplicitKey(x.AccessKey) is not null)
 						.ToList();
 
-					if (rowButtons.Count > 0)
-						candidates.Add((item, string.Empty, null, rowButtons));
+					if (rowButtons.Count is 0)
+						continue;
+
+					foreach (var button in rowButtons)
+						usedKeys.Add(GetExplicitKey(button.AccessKey)!.Value);
+
+					candidates.Add((item, string.Empty, null, rowButtons));
 				}
 			}
 
@@ -300,7 +356,7 @@ namespace Files.App.Helpers.ContextFlyouts
 				{
 					foreach (var button in candidate.RowButtons)
 					{
-						if (GetExplicitKey(button.AccessKey) is not char buttonKey || !usedKeys.Add(buttonKey))
+						if (GetExplicitKey(button.AccessKey) is not char buttonKey)
 							continue;
 
 						entries.Add((AutomationProperties.GetName(button), buttonKey, button, () => InvokeButton(button)));

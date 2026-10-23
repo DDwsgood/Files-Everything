@@ -373,6 +373,7 @@ namespace Files.App.Helpers.ContextFlyouts
 				return;
 
 			// Rebuild a fresh row rather than move it: reparenting the custom-templated row drops its button panel.
+			MenuFlyoutKeyboardHelper.ClearAccelerators([primaryRow]);
 			menuItems.Remove(primaryRow);
 			if (primarySeparator is not null)
 				menuItems.Remove(primarySeparator);

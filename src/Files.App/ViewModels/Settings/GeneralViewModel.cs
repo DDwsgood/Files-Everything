@@ -474,25 +474,47 @@ namespace Files.App.ViewModels.Settings
 		{
 			ShellExtensions.Clear();
 
-			foreach (var item in (UserSettingsService.GeneralSettingsService.KnownShellExtensions ?? [])
-				.OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase))
+			try
 			{
-				ShellExtensions.Add(new ShellExtensionItemViewModel(
-					item.Label,
-					item.Verb,
-					!IsShellExtensionHidden(item.Verb, item.Label),
-					OnShellExtensionVisibilityChanged));
+				foreach (var item in (UserSettingsService.GeneralSettingsService.KnownShellExtensions ?? [])
+					.OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase))
+				{
+					ShellExtensions.Add(new ShellExtensionItemViewModel(
+						item.Label,
+						item.Verb,
+						!IsShellExtensionHidden(item.Verb, item.Label),
+						OnShellExtensionVisibilityChanged));
+				}
+			}
+			catch (Exception ex)
+			{
+				// A bad or unavailable settings entry must not take the settings page down.
+				Debug.WriteLine(ex);
 			}
 		}
 
 		private bool IsShellExtensionHidden(string verb, string label)
 		{
-			return HiddenShellExtensions.Any(x =>
-				Matches(x, verb) || Matches(x, label));
+			foreach (var entry in HiddenShellExtensions)
+			{
+				var normalized = NormalizeShellExtensionEntry(entry);
 
-			static bool Matches(string entry, string value)
-				=> !string.IsNullOrWhiteSpace(value) && string.Equals(entry, value, StringComparison.OrdinalIgnoreCase);
+				if (Matches(normalized, verb) || Matches(normalized, label))
+					return true;
+			}
+
+			return false;
+
+			static bool Matches(string entry, string? value)
+			{
+				var normalized = NormalizeShellExtensionEntry(value);
+
+				return normalized.Length > 0 && string.Equals(entry, normalized, StringComparison.OrdinalIgnoreCase);
+			}
 		}
+
+		private static string NormalizeShellExtensionEntry(string? value)
+			=> (value ?? string.Empty).Trim().Replace("&", string.Empty);
 
 		private void OnShellExtensionVisibilityChanged(ShellExtensionItemViewModel item, bool isVisible)
 		{
@@ -504,19 +526,23 @@ namespace Files.App.ViewModels.Settings
 			}
 
 			var entry = string.IsNullOrWhiteSpace(item.Verb) ? item.Label : item.Verb;
-			if (string.IsNullOrWhiteSpace(entry) || HiddenShellExtensions.Any(x => string.Equals(x, entry, StringComparison.OrdinalIgnoreCase)))
+			var normalized = NormalizeShellExtensionEntry(entry);
+			if (normalized.Length is 0)
+				return;
+			if (HiddenShellExtensions.Any(x => string.Equals(NormalizeShellExtensionEntry(x), normalized, StringComparison.OrdinalIgnoreCase)))
 				return;
 
-			HiddenShellExtensions.Add(entry);
+			HiddenShellExtensions.Add(normalized);
 		}
 
 		private void RemoveHiddenEntry(string value)
 		{
-			if (string.IsNullOrWhiteSpace(value))
+			var normalized = NormalizeShellExtensionEntry(value);
+			if (normalized.Length is 0)
 				return;
 
 			foreach (var existing in HiddenShellExtensions
-				.Where(x => string.Equals(x, value, StringComparison.OrdinalIgnoreCase))
+				.Where(x => string.Equals(NormalizeShellExtensionEntry(x), normalized, StringComparison.OrdinalIgnoreCase))
 				.ToList())
 			{
 				HiddenShellExtensions.Remove(existing);

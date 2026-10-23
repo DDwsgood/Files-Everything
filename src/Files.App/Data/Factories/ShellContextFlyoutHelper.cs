@@ -148,41 +148,49 @@ namespace Files.App.Helpers
 		{
 			const int maxKnownEntries = 200;
 
-			var known = UserSettingsService.GeneralSettingsService.KnownShellExtensions;
-			var knownKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-			if (known is not null)
-				foreach (var entry in known)
-					knownKeys.Add($"{entry.Verb}\u001F{entry.Label}");
-
-			var discovered = new List<ShellExtensionMenuItem>();
-
-			foreach (var item in EnumerateItems(items))
+			try
 			{
-				if (item.Tag is not Win32ContextMenuItem { Label: { Length: > 0 } rawLabel } shellItem)
-					continue;
+				var known = UserSettingsService.GeneralSettingsService.KnownShellExtensions;
+				var knownKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-				var label = GetShellItemLabel(rawLabel);
-				if (label.Length is 0)
-					continue;
+				if (known is not null)
+					foreach (var entry in known)
+						knownKeys.Add($"{entry.Verb}\u001F{entry.Label}");
 
-				var verb = shellItem.CommandString ?? string.Empty;
-				if (!knownKeys.Add($"{verb}\u001F{label}"))
-					continue;
+				var discovered = new List<ShellExtensionMenuItem>();
 
-				discovered.Add(new ShellExtensionMenuItem { Verb = verb, Label = label });
+				foreach (var item in EnumerateItems(items))
+				{
+					if (item.Tag is not Win32ContextMenuItem { Label: { Length: > 0 } rawLabel } shellItem)
+						continue;
+
+					var label = GetShellItemLabel(rawLabel);
+					if (label.Length is 0)
+						continue;
+
+					var verb = shellItem.CommandString ?? string.Empty;
+					if (!knownKeys.Add($"{verb}\u001F{label}"))
+						continue;
+
+					discovered.Add(new ShellExtensionMenuItem { Verb = verb, Label = label });
+				}
+
+				if (discovered.Count is 0)
+					return;
+
+				known ??= [];
+				known.AddRange(discovered);
+
+				if (known.Count > maxKnownEntries)
+					known.RemoveRange(0, known.Count - maxKnownEntries);
+
+				UserSettingsService.GeneralSettingsService.KnownShellExtensions = known;
 			}
-
-			if (discovered.Count is 0)
-				return;
-
-			known ??= [];
-			known.AddRange(discovered);
-
-			if (known.Count > maxKnownEntries)
-				known.RemoveRange(0, known.Count - maxKnownEntries);
-
-			UserSettingsService.GeneralSettingsService.KnownShellExtensions = known;
+			catch (Exception ex)
+			{
+				// Never let bookkeeping for the settings page break the context menu itself.
+				Debug.WriteLine(ex);
+			}
 		}
 
 		private static IEnumerable<ContextMenuFlyoutItemViewModel> EnumerateItems(List<ContextMenuFlyoutItemViewModel> items)

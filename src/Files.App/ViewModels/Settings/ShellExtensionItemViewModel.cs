@@ -1,6 +1,8 @@
 // Copyright (c) Files Community
 // Licensed under the MIT License.
 
+using Microsoft.UI.Xaml;
+
 namespace Files.App.ViewModels.Settings
 {
 	/// <summary>
@@ -14,8 +16,8 @@ namespace Files.App.ViewModels.Settings
 
 		public string Verb { get; }
 
-		public bool HasVerb
-			=> !string.IsNullOrWhiteSpace(Verb);
+		public Visibility VerbVisibility
+			=> string.IsNullOrWhiteSpace(Verb) ? Visibility.Collapsed : Visibility.Visible;
 
 		private bool isVisible;
 		public bool IsVisible

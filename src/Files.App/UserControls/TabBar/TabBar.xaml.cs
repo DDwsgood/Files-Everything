@@ -310,12 +310,13 @@ namespace Files.App.UserControls.TabBar
 		[DynamicWindowsRuntimeCast(typeof(MenuFlyout))]
 		private void TabItemContextMenu_Opening(object sender, object e)
 		{
-			MenuFlyoutKeyboardHelper.Attach(sender as MenuFlyout);
-
-			// This flyout is attached while it is already opening, so the opening handler cannot apply the
-			// accelerators for the first open.
+			// This flyout is attached while it is already opening, so the opening handler cannot do the
+			// initialization for the first open.
 			if (sender is MenuFlyout tabFlyout)
-				MenuFlyoutKeyboardHelper.ApplyAccelerators(tabFlyout.Items);
+			{
+				MenuFlyoutKeyboardHelper.Attach(tabFlyout);
+				MenuFlyoutKeyboardHelper.PrepareOpen(tabFlyout);
+			}
 
 			MenuItemMoveTabToNewWindow.IsEnabled = Items.Count > 1;
 			SelectedTabItemChanged?.Invoke(null, ((MenuFlyout)sender).Target.DataContext as TabBarItem);
