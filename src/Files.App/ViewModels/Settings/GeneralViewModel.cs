@@ -109,6 +109,8 @@ namespace Files.App.ViewModels.Settings
 			HiddenShellExtensions = new(UserSettingsService.GeneralSettingsService.HiddenShellExtensions ?? []);
 			HiddenShellExtensions.CollectionChanged += HiddenShellExtensions_CollectionChanged;
 
+			LoadShellExtensions();
+
 			// ShellPaneArrangement
 			ShellPaneArrangementTypes.Add(ShellPaneArrangement.Vertical, Strings.Vertical.GetLocalizedResource());
 			ShellPaneArrangementTypes.Add(ShellPaneArrangement.Horizontal, Strings.Horizontal.GetLocalizedResource());
@@ -463,30 +465,62 @@ namespace Files.App.ViewModels.Settings
 
 		public ObservableCollection<string> HiddenShellExtensions { get; }
 
-		private string newHiddenShellExtension = string.Empty;
-		public string NewHiddenShellExtension
+		public ObservableCollection<ShellExtensionItemViewModel> ShellExtensions { get; } = [];
+
+		/// <summary>
+		/// Fills the settings list with the shell extension entries that were seen in context menus so far.
+		/// </summary>
+		public void LoadShellExtensions()
 		{
-			get => newHiddenShellExtension;
-			set => SetProperty(ref newHiddenShellExtension, value);
+			ShellExtensions.Clear();
+
+			foreach (var item in (UserSettingsService.GeneralSettingsService.KnownShellExtensions ?? [])
+				.OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase))
+			{
+				ShellExtensions.Add(new ShellExtensionItemViewModel(
+					item.Label,
+					item.Verb,
+					!IsShellExtensionHidden(item.Verb, item.Label),
+					OnShellExtensionVisibilityChanged));
+			}
 		}
 
-		public void AddHiddenShellExtension()
+		private bool IsShellExtensionHidden(string verb, string label)
 		{
-			var entry = NewHiddenShellExtension.Trim();
-			if (string.IsNullOrEmpty(entry))
+			return HiddenShellExtensions.Any(x =>
+				Matches(x, verb) || Matches(x, label));
+
+			static bool Matches(string entry, string value)
+				=> !string.IsNullOrWhiteSpace(value) && string.Equals(entry, value, StringComparison.OrdinalIgnoreCase);
+		}
+
+		private void OnShellExtensionVisibilityChanged(ShellExtensionItemViewModel item, bool isVisible)
+		{
+			if (isVisible)
+			{
+				RemoveHiddenEntry(item.Verb);
+				RemoveHiddenEntry(item.Label);
+				return;
+			}
+
+			var entry = string.IsNullOrWhiteSpace(item.Verb) ? item.Label : item.Verb;
+			if (string.IsNullOrWhiteSpace(entry) || HiddenShellExtensions.Any(x => string.Equals(x, entry, StringComparison.OrdinalIgnoreCase)))
 				return;
 
-			if (!HiddenShellExtensions.Any(x => string.Equals(x, entry, StringComparison.OrdinalIgnoreCase)))
-				HiddenShellExtensions.Add(entry);
-
-			NewHiddenShellExtension = string.Empty;
+			HiddenShellExtensions.Add(entry);
 		}
 
-		public void RemoveHiddenShellExtension(string entry)
+		private void RemoveHiddenEntry(string value)
 		{
-			var existing = HiddenShellExtensions.FirstOrDefault(x => string.Equals(x, entry, StringComparison.OrdinalIgnoreCase));
-			if (existing is not null)
+			if (string.IsNullOrWhiteSpace(value))
+				return;
+
+			foreach (var existing in HiddenShellExtensions
+				.Where(x => string.Equals(x, value, StringComparison.OrdinalIgnoreCase))
+				.ToList())
+			{
 				HiddenShellExtensions.Remove(existing);
+			}
 		}
 
 		private void HiddenShellExtensions_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)

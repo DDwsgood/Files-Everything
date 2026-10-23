@@ -312,6 +312,11 @@ namespace Files.App.UserControls.TabBar
 		{
 			MenuFlyoutKeyboardHelper.Attach(sender as MenuFlyout);
 
+			// This flyout is attached while it is already opening, so the opening handler cannot apply the
+			// accelerators for the first open.
+			if (sender is MenuFlyout tabFlyout)
+				MenuFlyoutKeyboardHelper.ApplyAccelerators(tabFlyout.Items);
+
 			MenuItemMoveTabToNewWindow.IsEnabled = Items.Count > 1;
 			SelectedTabItemChanged?.Invoke(null, ((MenuFlyout)sender).Target.DataContext as TabBarItem);
 		}

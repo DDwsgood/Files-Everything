@@ -13,14 +13,25 @@ namespace Files.App.Helpers.ContextFlyouts
 	/// <summary>
 	/// Provides Windows 10 style mnemonic activation for menu flyouts: while a menu is open, pressing an item's
 	/// access key runs that item without holding Alt, which WinUI's built-in access key mode requires.
+	/// Menu keys are handled three ways because WinUI's own menu keyboard handling consumes key events before
+	/// they reach ordinary element handlers: single-key keyboard accelerators, a presenter key handler and an
+	/// item key handler. A shared guard makes sure only the first one that fires wins.
 	/// </summary>
 	internal static class MenuFlyoutKeyboardHelper
 	{
+		// Two handlers can observe the same key press (an accelerator and a key handler, or an item and its
+		// presenter). Remember the last activation so the same item cannot run twice for one press.
+		private static object? lastActivatedTarget;
+		private static long lastActivatedTick;
+
 		private static readonly DependencyProperty IsAttachedProperty =
 			DependencyProperty.RegisterAttached("IsAttached", typeof(bool), typeof(MenuFlyoutKeyboardHelper), new PropertyMetadata(false));
 
 		private static readonly DependencyProperty IsFlyoutAttachedProperty =
 			DependencyProperty.RegisterAttached("IsFlyoutAttached", typeof(bool), typeof(MenuFlyoutKeyboardHelper), new PropertyMetadata(false));
+
+		private static readonly DependencyProperty AddedAcceleratorsProperty =
+			DependencyProperty.RegisterAttached("AddedAccelerators", typeof(List<KeyboardAccelerator>), typeof(MenuFlyoutKeyboardHelper), new PropertyMetadata(null));
 
 		/// <summary>
 		/// Enables mnemonic activation on a single menu item. Items built from models are attached automatically.
@@ -31,6 +42,7 @@ namespace Files.App.Helpers.ContextFlyouts
 				return;
 
 			item.SetValue(IsAttachedProperty, true);
+			item.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(Item_KeyDown), true);
 			item.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Item_KeyDown), true);
 		}
 
@@ -43,6 +55,7 @@ namespace Files.App.Helpers.ContextFlyouts
 				return;
 
 			presenter.SetValue(IsAttachedProperty, true);
+			presenter.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(Presenter_KeyDown), true);
 			presenter.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Presenter_KeyDown), true);
 		}
 
@@ -55,9 +68,8 @@ namespace Files.App.Helpers.ContextFlyouts
 				return;
 
 			flyout.SetValue(IsFlyoutAttachedProperty, true);
-			App.LastOpenedFlyout = flyout;
-			AttachItems(flyout.Items);
 			flyout.Opening += Flyout_Opening;
+			flyout.Closed += Flyout_Closed;
 		}
 
 		/// <summary>
@@ -75,6 +87,79 @@ namespace Files.App.Helpers.ContextFlyouts
 			}
 		}
 
+		/// <summary>
+		/// Registers a single-key accelerator for every menu item of the given levels. Accelerators are
+		/// dispatched by the input manager, so they also work while a menu item holds the focus.
+		/// </summary>
+		public static void ApplyAccelerators(IEnumerable<MenuFlyoutItemBase> items)
+		{
+			var usedKeys = new HashSet<VirtualKey>();
+			ApplyAccelerators(items, usedKeys);
+		}
+
+		private static void ApplyAccelerators(IEnumerable<MenuFlyoutItemBase> items, HashSet<VirtualKey> usedKeys)
+		{
+			foreach (var entry in BuildLevelEntries(items))
+			{
+				var key = (VirtualKey)entry.Key;
+				if (!usedKeys.Add(key))
+					continue;
+
+				// The primary row is rebuilt after a placement flip; keep the already registered keys.
+				if (entry.Element.GetValue(AddedAcceleratorsProperty) is List<KeyboardAccelerator> existing &&
+					existing.Any(x => x.Key == key && x.Modifiers is VirtualKeyModifiers.None))
+					continue;
+
+				var accelerator = new KeyboardAccelerator
+				{
+					Key = key,
+					Modifiers = VirtualKeyModifiers.None,
+				};
+				accelerator.Invoked += (_, args) =>
+				{
+					args.Handled = true;
+					entry.Activate();
+				};
+
+				entry.Element.KeyboardAccelerators.Add(accelerator);
+				entry.Element.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
+
+				if (entry.Element.GetValue(AddedAcceleratorsProperty) is not List<KeyboardAccelerator> added)
+				{
+					added = [];
+					entry.Element.SetValue(AddedAcceleratorsProperty, added);
+				}
+
+				added.Add(accelerator);
+			}
+
+			foreach (var item in items)
+			{
+				if (item is MenuFlyoutSubItem subItem)
+					ApplyAccelerators(subItem.Items, usedKeys);
+			}
+		}
+
+		/// <summary>
+		/// Removes the accelerators this helper registered, so no single-key shortcut stays live while a menu is closed.
+		/// </summary>
+		public static void ClearAccelerators(IEnumerable<MenuFlyoutItemBase> items)
+		{
+			foreach (var item in items)
+			{
+				if (item.GetValue(AddedAcceleratorsProperty) is List<KeyboardAccelerator> added)
+				{
+					foreach (var accelerator in added)
+						item.KeyboardAccelerators.Remove(accelerator);
+
+					added.Clear();
+				}
+
+				if (item is MenuFlyoutSubItem subItem)
+					ClearAccelerators(subItem.Items);
+			}
+		}
+
 		private static void Flyout_Opening(object? sender, object e)
 		{
 			if (sender is not MenuFlyout flyout)
@@ -82,13 +167,22 @@ namespace Files.App.Helpers.ContextFlyouts
 
 			App.LastOpenedFlyout = flyout;
 			AttachItems(flyout.Items);
+			ApplyAccelerators(flyout.Items);
+		}
+
+		private static void Flyout_Closed(object? sender, object e)
+		{
+			if (sender is not MenuFlyout flyout)
+				return;
+
+			ClearAccelerators(flyout.Items);
 		}
 
 		private static void Presenter_KeyDown(object sender, KeyRoutedEventArgs e)
 		{
-			// Item handlers run first and mark the key as handled; only act when nothing else did.
-			if (!e.Handled)
-				Item_KeyDown(sender, e);
+			// The menu presenter handles key input itself and marks it handled, so the event state cannot be
+			// used here. The activation guard keeps a key from running the same item twice.
+			Item_KeyDown(sender, e);
 		}
 
 		private static void Item_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -102,11 +196,16 @@ namespace Files.App.Helpers.ContextFlyouts
 				return;
 
 			var level = GetMenuLevel(source);
-			if (level is null || !TryFindItem(level, character, out Action? activate) || activate is null)
+			if (level is null)
+				return;
+
+			var entry = BuildLevelEntries(level.Items.OfType<MenuFlyoutItemBase>())
+				.FirstOrDefault(x => x.Key == character);
+			if (entry.Activate is null)
 				return;
 
 			e.Handled = true;
-			activate();
+			entry.Activate();
 		}
 
 		private static bool IsModifierDown(VirtualKey key)
@@ -152,26 +251,27 @@ namespace Files.App.Helpers.ContextFlyouts
 			return null;
 		}
 
-		private static bool TryFindItem(ItemsControl level, char character, out Action? activate)
+		/// <summary>
+		/// Assigns one key per actionable item of a menu level: declared access keys first, then the first free
+		/// character of the label, matching how explorer assigns mnemonics.
+		/// </summary>
+		private static List<(string Text, char Key, UIElement Element, Action Activate)> BuildLevelEntries(IEnumerable<MenuFlyoutItemBase> items)
 		{
-			activate = null;
-
-			var entries = new List<(string Text, char? ExplicitKey, Action Activate)>();
+			var candidates = new List<(MenuFlyoutItemBase Element, string Text, char? ExplicitKey, List<Button> RowButtons)>();
 			var usedKeys = new HashSet<char>();
 
-			foreach (var element in level.Items)
+			foreach (var item in items)
 			{
-				if (element is not MenuFlyoutItemBase item || item is MenuFlyoutSeparator ||
-					item.Visibility is not Visibility.Visible || !item.IsEnabled)
+				if (item is MenuFlyoutSeparator || item.Visibility is not Visibility.Visible || !item.IsEnabled)
 					continue;
 
 				if (GetText(item) is { Length: > 0 } text)
 				{
-					if (GetActivation(item) is not { } itemActivation)
+					if (GetActivation(item) is null)
 						continue;
 
 					var explicitKey = GetExplicitKey(GetAccessKey(item));
-					entries.Add((text, explicitKey, itemActivation));
+					candidates.Add((item, text, explicitKey, []));
 
 					if (explicitKey is char key)
 						usedKeys.Add(key);
@@ -181,51 +281,47 @@ namespace Files.App.Helpers.ContextFlyouts
 
 				// The primary command row hosts icon buttons inside an item without text of its own.
 				if (item is MenuFlyoutItem { Tag: Panel primaryRow })
-					AddPrimaryRowEntries(primaryRow, entries, usedKeys);
-			}
-
-			// Declared access keys win; the remaining items get the first free character of their label.
-			foreach (var entry in entries)
-			{
-				if (entry.ExplicitKey is char explicitKey)
 				{
-					if (explicitKey != character)
-						continue;
+					var rowButtons = primaryRow.Children
+						.OfType<Button>()
+						.Where(x => x.IsEnabled && GetExplicitKey(x.AccessKey) is not null)
+						.ToList();
 
-					activate = entry.Activate;
-					return true;
-				}
-
-				var derivedKey = GetDerivedKey(entry.Text, usedKeys);
-				if (derivedKey is not char derived)
-					continue;
-
-				usedKeys.Add(derived);
-				if (derived == character)
-				{
-					activate = entry.Activate;
-					return true;
+					if (rowButtons.Count > 0)
+						candidates.Add((item, string.Empty, null, rowButtons));
 				}
 			}
 
-			return false;
-		}
+			var entries = new List<(string Text, char Key, UIElement Element, Action Activate)>();
 
-		private static void AddPrimaryRowEntries(Panel primaryRow, List<(string Text, char? ExplicitKey, Action Activate)> entries, HashSet<char> usedKeys)
-		{
-			foreach (var child in primaryRow.Children)
+			foreach (var candidate in candidates)
 			{
-				if (child is not Button { IsEnabled: true } button)
+				if (candidate.RowButtons.Count > 0)
+				{
+					foreach (var button in candidate.RowButtons)
+					{
+						if (GetExplicitKey(button.AccessKey) is not char buttonKey || !usedKeys.Add(buttonKey))
+							continue;
+
+						entries.Add((AutomationProperties.GetName(button), buttonKey, button, () => InvokeButton(button)));
+					}
+					continue;
+				}
+
+				if (candidate.ExplicitKey is char explicitKey)
+				{
+					entries.Add((candidate.Text, explicitKey, candidate.Element, GetActivation(candidate.Element)!));
+					continue;
+				}
+
+				if (GetDerivedKey(candidate.Text, usedKeys) is not char derivedKey)
 					continue;
 
-				var explicitKey = GetExplicitKey(button.AccessKey);
-				if (explicitKey is not char key)
-					continue;
-
-				var text = AutomationProperties.GetName(button);
-				entries.Add((text ?? string.Empty, key, () => InvokeButton(button)));
-				usedKeys.Add(key);
+				usedKeys.Add(derivedKey);
+				entries.Add((candidate.Text, derivedKey, candidate.Element, GetActivation(candidate.Element)!));
 			}
+
+			return entries;
 		}
 
 		private static Action? GetActivation(MenuFlyoutItemBase item)
@@ -246,7 +342,7 @@ namespace Files.App.Helpers.ContextFlyouts
 		{
 			if (menuItem.Command is { } command)
 			{
-				if (!command.CanExecute(menuItem.CommandParameter))
+				if (!command.CanExecute(menuItem.CommandParameter) || !TryBeginActivation(menuItem))
 					return;
 
 				// A click toggles the item before running its command; mirror that for the keyboard path.
@@ -263,7 +359,7 @@ namespace Files.App.Helpers.ContextFlyouts
 			}
 
 			// Checkable items bound straight to their IsChecked state have no command.
-			if (menuItem is ToggleMenuFlyoutItem boundToggle)
+			if (menuItem is ToggleMenuFlyoutItem boundToggle && TryBeginActivation(boundToggle))
 			{
 				boundToggle.IsChecked = !boundToggle.IsChecked;
 				CloseFlyout();
@@ -272,7 +368,7 @@ namespace Files.App.Helpers.ContextFlyouts
 
 		private static void InvokeButton(Button button)
 		{
-			if (button.Command is not { } command || !command.CanExecute(button.CommandParameter))
+			if (button.Command is not { } command || !command.CanExecute(button.CommandParameter) || !TryBeginActivation(button))
 				return;
 
 			CloseFlyout();
@@ -281,6 +377,18 @@ namespace Files.App.Helpers.ContextFlyouts
 				if (command.CanExecute(button.CommandParameter))
 					command.Execute(button.CommandParameter);
 			});
+		}
+
+		private static bool TryBeginActivation(object target)
+		{
+			var now = Stopwatch.GetTimestamp();
+			if (ReferenceEquals(lastActivatedTarget, target) && now - lastActivatedTick < Stopwatch.Frequency / 4)
+				return false;
+
+			lastActivatedTarget = target;
+			lastActivatedTick = now;
+
+			return true;
 		}
 
 		private static void CloseFlyout()
@@ -302,8 +410,6 @@ namespace Files.App.Helpers.ContextFlyouts
 
 		private static IEnumerable<char> EnumerateKeyCandidates(string text)
 		{
-			// Matches how explorer assigns mnemonics: the first character, then the initials of the
-			// remaining words, then any other unused character of the label.
 			char first = default;
 			if (text.Length > 0 && TryGetKeyCandidate(text[0], out char firstKey))
 			{

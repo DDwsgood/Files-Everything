@@ -217,6 +217,12 @@ namespace Files.App.Data.Contracts
 		List<string>? HiddenShellExtensions { get; set; }
 
 		/// <summary>
+		/// Gets or sets the shell extension menu items that were seen in context menus. Used to list the
+		/// installed extensions in the settings page.
+		/// </summary>
+		List<ShellExtensionMenuItem>? KnownShellExtensions { get; set; }
+
+		/// <summary>
 		/// Gets or sets a value indicating whether or not to show the edit tags menu.
 		/// </summary>
 		bool ShowEditTagsMenu { get; set; }

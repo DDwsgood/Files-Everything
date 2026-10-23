@@ -357,31 +357,19 @@
 							<RowDefinition Height="Auto" />
 						</Grid.RowDefinitions>
 
-						<!--  New hidden item  -->
-						<Grid
+						<TextBlock
 							Margin="12,0,12,0"
-							ColumnSpacing="8">
-							<Grid.ColumnDefinitions>
-								<ColumnDefinition Width="*" />
-								<ColumnDefinition Width="Auto" />
-							</Grid.ColumnDefinitions>
-							<TextBox
-								PlaceholderText="{helpers:ResourceString Name=SettingsContextMenuShellExtensionsPlaceholder}"
-								KeyDown="HiddenShellExtensionTextBox_KeyDown"
-								Text="{x:Bind ViewModel.NewHiddenShellExtension, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-							<Button
-								Grid.Column="1"
-								AutomationProperties.Name="{helpers:ResourceString Name=Add}"
-								Click="AddHiddenShellExtension_Click"
-								Content="{helpers:ResourceString Name=Add}" />
-						</Grid>
+							Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+							Style="{StaticResource CaptionTextBlockStyle}"
+							Text="{helpers:ResourceString Name=SettingsContextMenuShellExtensionsHint}"
+							TextWrapping="Wrap" />
 
-						<!--  Hidden items  -->
+						<!--  Discovered shell extension items  -->
 						<ListView
 							Grid.Row="1"
 							Margin="12,0,12,0"
-							MaxHeight="200"
-							ItemsSource="{x:Bind ViewModel.HiddenShellExtensions, Mode=OneWay}"
+							MaxHeight="280"
+							ItemsSource="{x:Bind ViewModel.ShellExtensions, Mode=OneWay}"
 							SelectionMode="None">
 							<ListView.ItemContainerStyle>
 								<Style BasedOn="{StaticResource DefaultListViewItemStyle}" TargetType="ListViewItem">
@@ -390,19 +378,28 @@
 								</Style>
 							</ListView.ItemContainerStyle>
 							<ListView.ItemTemplate>
-								<DataTemplate>
-									<Grid HorizontalAlignment="Stretch">
-										<TextBlock
-											VerticalAlignment="Center"
-											Text="{Binding}"
-											TextTrimming="CharacterEllipsis" />
-										<Button
-											HorizontalAlignment="Right"
-											AutomationProperties.Name="{helpers:ResourceString Name=Remove}"
-											Click="RemoveHiddenShellExtension_Click"
-											ToolTipService.ToolTip="{helpers:ResourceString Name=Remove}">
-											<FontIcon FontSize="16" Glyph="&#xE74D;" />
-										</Button>
+								<DataTemplate x:DataType="vm:ShellExtensionItemViewModel">
+									<Grid HorizontalAlignment="Stretch" ColumnSpacing="8">
+										<Grid.ColumnDefinitions>
+											<ColumnDefinition Width="*" />
+											<ColumnDefinition Width="Auto" />
+										</Grid.ColumnDefinitions>
+
+										<StackPanel VerticalAlignment="Center">
+											<TextBlock Text="{x:Bind Label, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
+											<TextBlock
+												Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+												Style="{StaticResource CaptionTextBlockStyle}"
+												Text="{x:Bind Verb, Mode=OneWay}"
+												TextTrimming="CharacterEllipsis"
+												Visibility="{x:Bind HasVerb, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+										</StackPanel>
+
+										<ToggleSwitch
+											Grid.Column="1"
+											MinWidth="0"
+											AutomationProperties.Name="{x:Bind Label, Mode=OneWay}"
+											IsOn="{x:Bind IsVisible, Mode=TwoWay}" />
 									</Grid>
 								</DataTemplate>
 							</ListView.ItemTemplate>

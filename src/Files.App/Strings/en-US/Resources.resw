@@ -720,10 +720,10 @@
     <value>Remove all hidden items</value>
   </data>
   <data name="SettingsContextMenuShellExtensionsDescription" xml:space="preserve">
-    <value>Hide items added by shell extensions. Add the command name or the label as it appears in the menu.</value>
+    <value>Choose which shell extension entries appear in context menus. Entries are detected from the menus you open.</value>
   </data>
-  <data name="SettingsContextMenuShellExtensionsPlaceholder" xml:space="preserve">
-    <value>Command name or menu label</value>
+  <data name="SettingsContextMenuShellExtensionsHint" xml:space="preserve">
+    <value>Open a context menu on a file once to detect the installed extensions. Turn an entry off to hide it.</value>
   </data>
   <data name="ShowConfirmationWhenDeletingItems" xml:space="preserve">
     <value>Show confirmation dialog when deleting items</value>

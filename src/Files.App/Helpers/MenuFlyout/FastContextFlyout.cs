@@ -49,6 +49,7 @@ namespace Files.App.Helpers.ContextFlyouts
 			Flyout.Opening += (sender, e) => App.LastOpenedFlyout = Flyout;
 			Flyout.Opened += Flyout_Opened;
 			Flyout.Closed += Flyout_Closed;
+			MenuFlyoutKeyboardHelper.Attach(Flyout);
 		}
 
 		/// <summary>
@@ -388,6 +389,8 @@ namespace Files.App.Helpers.ContextFlyouts
 				menuItems.Insert(0, primaryRow);
 				menuItems.Insert(1, primarySeparator);
 			}
+
+			MenuFlyoutKeyboardHelper.ApplyAccelerators(menuItems);
 		}
 
 		/// <summary>

@@ -135,7 +135,78 @@ namespace Files.App.Helpers
 			if (cancellationToken.IsCancellationRequested)
 				menuItemsList.Clear();
 
+			RememberShellExtensions(menuItemsList);
+
 			return menuItemsList;
+		}
+
+		/// <summary>
+		/// Records the shell extension entries that were seen so the settings page can list the installed
+		/// extensions and let the user hide them without knowing their command names.
+		/// </summary>
+		private static void RememberShellExtensions(List<ContextMenuFlyoutItemViewModel> items)
+		{
+			const int maxKnownEntries = 200;
+
+			var known = UserSettingsService.GeneralSettingsService.KnownShellExtensions;
+			var knownKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+			if (known is not null)
+				foreach (var entry in known)
+					knownKeys.Add($"{entry.Verb}\u001F{entry.Label}");
+
+			var discovered = new List<ShellExtensionMenuItem>();
+
+			foreach (var item in EnumerateItems(items))
+			{
+				if (item.Tag is not Win32ContextMenuItem { Label: { Length: > 0 } rawLabel } shellItem)
+					continue;
+
+				var label = GetShellItemLabel(rawLabel);
+				if (label.Length is 0)
+					continue;
+
+				var verb = shellItem.CommandString ?? string.Empty;
+				if (!knownKeys.Add($"{verb}\u001F{label}"))
+					continue;
+
+				discovered.Add(new ShellExtensionMenuItem { Verb = verb, Label = label });
+			}
+
+			if (discovered.Count is 0)
+				return;
+
+			known ??= [];
+			known.AddRange(discovered);
+
+			if (known.Count > maxKnownEntries)
+				known.RemoveRange(0, known.Count - maxKnownEntries);
+
+			UserSettingsService.GeneralSettingsService.KnownShellExtensions = known;
+		}
+
+		private static IEnumerable<ContextMenuFlyoutItemViewModel> EnumerateItems(List<ContextMenuFlyoutItemViewModel> items)
+		{
+			foreach (var item in items)
+			{
+				yield return item;
+
+				if (item.Items is { Count: > 0 })
+					foreach (var child in EnumerateItems(item.Items))
+						yield return child;
+			}
+		}
+
+		/// <summary>
+		/// Strips the mnemonic marker and the accelerator suffix the shell appends to menu labels.
+		/// </summary>
+		private static string GetShellItemLabel(string rawLabel)
+		{
+			var tabIndex = rawLabel.IndexOf('\t');
+			if (tabIndex >= 0)
+				rawLabel = rawLabel[..tabIndex];
+
+			return rawLabel.Replace("&", string.Empty).Trim();
 		}
 
 		private static async Task LoadMenuFlyoutItemAsync(

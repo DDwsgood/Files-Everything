@@ -263,6 +263,12 @@ namespace Files.App.Services.Settings
 			set => Set(value);
 		}
 
+		public List<ShellExtensionMenuItem>? KnownShellExtensions
+		{
+			get => Get<List<ShellExtensionMenuItem>>(null);
+			set => Set(value);
+		}
+
 		public bool ShowPinToSideBar
 		{
 			get => Get(true);

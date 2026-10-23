@@ -16,7 +16,7 @@
     <Identity
         Name="FilesDev"
         Publisher="CN=Files"
-        Version="4.2.27.1" />
+        Version="4.2.27.2" />
 
     <Properties>
         <DisplayName>Files - Dev</DisplayName>
