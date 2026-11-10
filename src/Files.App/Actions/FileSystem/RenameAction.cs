@@ -6,6 +6,8 @@ namespace Files.App.Actions
 	[GeneratedRichCommand]
 	internal sealed partial class RenameAction : ObservableObject, IAction
 	{
+		internal sealed record Invocation(BaseLayoutPage Page, IReadOnlyList<ListedItem> Items);
+
 		private readonly IContentPageContext context;
 
 		public string Label
@@ -44,15 +46,24 @@ namespace Files.App.Actions
 
 		public async Task ExecuteAsync(object? parameter = null)
 		{
-			if (context.SelectedItems.Count > 1)
+			var invocation = parameter as Invocation;
+			var shellPage = invocation?.Page.ParentShellPageInstance ?? context.ShellPage;
+			var page = invocation?.Page ?? shellPage?.SlimContentPage;
+			IReadOnlyList<ListedItem> items = invocation?.Items ?? context.SelectedItems.ToArray();
+			if (page is null || items.Count == 0)
+				return;
+
+			if (items.Count > 1)
 			{
-				var viewModel = new BulkRenameDialogViewModel();
+				var viewModel = new BulkRenameDialogViewModel(shellPage, items);
 				var dialogService = Ioc.Default.GetRequiredService<IDialogService>();
 				var result = await dialogService.ShowDialogAsync(viewModel);
 			}
 			else
 			{
-				context.ShellPage?.SlimContentPage?.ItemManipulationModel.StartRenameItem();
+				// Keep the menu's target even if focus restoration changed the live selection.
+				page.ItemManipulationModel.SetSelectedItem(items[0]);
+				page.ItemManipulationModel.StartRenameItem();
 			}
 		}
 

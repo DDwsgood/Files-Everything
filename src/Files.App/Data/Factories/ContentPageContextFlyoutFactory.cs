@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using Files.App.Helpers.ContextFlyouts;
+using Files.App.Actions;
 using Files.App.ViewModels.Layouts;
 using Files.Shared.Helpers;
 using Microsoft.UI.Xaml.Controls;
@@ -24,9 +25,9 @@ namespace Files.App.Data.Factories
 		private static readonly ICommandManager Commands = Ioc.Default.GetRequiredService<ICommandManager>();
 		private static IStorageArchiveService StorageArchiveService { get; } = Ioc.Default.GetRequiredService<IStorageArchiveService>();
 
-		public static List<ContextMenuFlyoutItemViewModel> GetItemContextCommandsWithoutShellItems(CurrentInstanceViewModel currentInstanceViewModel, List<ListedItem> selectedItems, BaseLayoutViewModel commandsViewModel, bool shiftPressed, SelectedItemsPropertiesViewModel? selectedItemsPropertiesViewModel, ShellViewModel? itemViewModel = null)
+		public static List<ContextMenuFlyoutItemViewModel> GetItemContextCommandsWithoutShellItems(CurrentInstanceViewModel currentInstanceViewModel, List<ListedItem> selectedItems, BaseLayoutViewModel commandsViewModel, bool shiftPressed, SelectedItemsPropertiesViewModel? selectedItemsPropertiesViewModel, ShellViewModel? itemViewModel = null, BaseLayoutPage? originatingPage = null)
 		{
-			var menuItemsList = GetBaseItemMenuItems(commandsViewModel: commandsViewModel, selectedItems: selectedItems, selectedItemsPropertiesViewModel: selectedItemsPropertiesViewModel, currentInstanceViewModel: currentInstanceViewModel, itemViewModel: itemViewModel);
+			var menuItemsList = GetBaseItemMenuItems(commandsViewModel: commandsViewModel, selectedItems: selectedItems, selectedItemsPropertiesViewModel: selectedItemsPropertiesViewModel, currentInstanceViewModel: currentInstanceViewModel, itemViewModel: itemViewModel, originatingPage: originatingPage);
 			menuItemsList = Filter(items: menuItemsList, shiftPressed: shiftPressed, currentInstanceViewModel: currentInstanceViewModel, selectedItems: selectedItems, removeOverflowMenu: false);
 			return menuItemsList;
 		}
@@ -83,7 +84,8 @@ namespace Files.App.Data.Factories
 			SelectedItemsPropertiesViewModel? selectedItemsPropertiesViewModel,
 			List<ListedItem> selectedItems,
 			CurrentInstanceViewModel currentInstanceViewModel,
-			ShellViewModel? itemViewModel = null)
+			ShellViewModel? itemViewModel = null,
+			BaseLayoutPage? originatingPage = null)
 		{
 			bool itemsSelected = itemViewModel is null;
 			bool canDecompress = selectedItems.Any() && selectedItems.All(x => x.IsArchive)
@@ -527,6 +529,7 @@ namespace Files.App.Data.Factories
 				}.Build(),
 				new ContextMenuFlyoutItemViewModelBuilder(Commands.Rename)
 				{
+					CommandParameter = originatingPage is null ? null : new RenameAction.Invocation(originatingPage, selectedItems.ToArray()),
 					IsPrimary = true,
 					IsVisible = itemsSelected
 				}.Build(),

@@ -30,6 +30,8 @@ namespace Files.App.Data.Models
 
 		public object? Tag { get; init; }
 
+		public object? CommandParameter { get; init; }
+
 		public bool ShowOnShift { get; init; } = false;
 
 		public List<ContextMenuFlyoutItemViewModel>? Items { get; init; } = null;
@@ -56,6 +58,7 @@ namespace Files.App.Data.Models
 				Text = command.Label,
 				Tag = Tag,
 				Command = command,
+				CommandParameter = CommandParameter,
 				IsEnabled = isExecutable,
 				IsChecked = command.IsOn,
 				IsPrimary = IsPrimary,

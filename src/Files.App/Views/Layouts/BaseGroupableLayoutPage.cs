@@ -105,6 +105,12 @@ namespace Files.App.Views.Layouts
 		[DynamicWindowsRuntimeCast(typeof(PasswordBox))]
 		protected override void Page_CharacterReceived(UIElement sender, CharacterReceivedRoutedEventArgs args)
 		{
+			if (Files.App.Helpers.ContextFlyouts.MenuFlyoutKeyboardHelper.ShouldSuppressListCharacter(args.Character))
+			{
+				args.Handled = true;
+				return;
+			}
+
 			if (ParentShellPageInstance is null ||
 				ParentShellPageInstance.CurrentPageType != this.GetType() ||
 				IsRenamingItem)

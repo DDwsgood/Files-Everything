@@ -35,20 +35,25 @@ namespace Files.App.ViewModels.Dialogs
 
 		public IAsyncRelayCommand CommitRenameCommand { get; private set; }
 
-		public BulkRenameDialogViewModel()
+		private readonly IShellPage? targetShellPage;
+		private readonly IReadOnlyList<ListedItem> targetItems;
+
+		public BulkRenameDialogViewModel(IShellPage? shellPage = null, IReadOnlyList<ListedItem>? items = null)
 		{
+			targetShellPage = shellPage ?? context.ShellPage;
+			targetItems = items ?? context.SelectedItems.ToArray();
 			CommitRenameCommand = new AsyncRelayCommand(DoCommitRenameAsync);
 		}
 
 		private async Task DoCommitRenameAsync()
 		{
-			if (context.ShellPage is null)
+			if (targetShellPage is null)
 				return;
 
-			foreach (ListedItem item in context.SelectedItems)
+			foreach (ListedItem item in targetItems)
 			{
 				var itemType = item.PrimaryItemAttribute == StorageItemTypes.Folder ? FilesystemItemType.Directory : FilesystemItemType.File;
-				await context.ShellPage.FilesystemHelpers.RenameAsync(
+				await targetShellPage.FilesystemHelpers.RenameAsync(
 					StorageHelpers.FromPathAndType(item.GetRequiredPath(), itemType),
 					FileName + item.FileExtension,
 					NameCollisionOption.GenerateUniqueName,

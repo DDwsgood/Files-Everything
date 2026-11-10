@@ -654,8 +654,8 @@ namespace Files.App.Views.Layouts
 					?? throw new InvalidOperationException("The layout commands are not initialized.");
 				var instanceViewModel = parentShellPage.InstanceViewModel;
 
-				// Workaround for item sometimes not getting selected
-				if (!IsItemSelected && (sender as MenuFlyout)?.Target is SelectorItem { Content: ListedItem li })
+				// ContextRequested can precede RightTapped; capture the clicked item without losing an existing multi-selection.
+				if ((sender as MenuFlyout)?.Target is SelectorItem { Content: ListedItem li } && !SelectedItems.Contains(li))
 					ItemManipulationModel.SetSelectedItem(li);
 
 				if (!IsItemSelected)
@@ -668,7 +668,7 @@ namespace Files.App.Views.Layouts
 				shiftPressed = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
 				SelectedItemsPropertiesViewModel.CheckAllFileExtensions(selectedItems.Select(x => x.FileExtension).ToList());
 
-				var items = ContentPageContextFlyoutFactory.GetItemContextCommandsWithoutShellItems(currentInstanceViewModel: instanceViewModel, selectedItems: selectedItems, selectedItemsPropertiesViewModel: SelectedItemsPropertiesViewModel, commandsViewModel: commandsViewModel, shiftPressed: shiftPressed, itemViewModel: null);
+				var items = ContentPageContextFlyoutFactory.GetItemContextCommandsWithoutShellItems(currentInstanceViewModel: instanceViewModel, selectedItems: selectedItems, selectedItemsPropertiesViewModel: SelectedItemsPropertiesViewModel, commandsViewModel: commandsViewModel, shiftPressed: shiftPressed, itemViewModel: null, originatingPage: this);
 				var host = ItemContextFlyoutHost;
 				host.Build(items);
 
@@ -722,6 +722,7 @@ namespace Files.App.Views.Layouts
 						.Where(x => x != openWithModel && x != sendToModel)
 						.ToList();
 					host.AddShellModels(shellModelsFiltered, shiftPressed, moreOptions, moreSeparator);
+					MenuFlyoutKeyboardHelper.RefreshOpenMenu();
 				}
 				else
 				{
@@ -960,6 +961,7 @@ namespace Files.App.Views.Layouts
 						.Where(x => x.Tag is not Win32ContextMenuItem { CommandString: "openas" or "sendto" })
 						.ToList();
 					host.AddShellModels(shellModelsFiltered, shiftPressed, moreOptions, moreSeparator);
+					MenuFlyoutKeyboardHelper.RefreshOpenMenu();
 				}
 				else
 				{

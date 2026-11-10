@@ -18,8 +18,12 @@ namespace Files.App.Helpers.ContextFlyouts
 	/// </summary>
 	internal static class MenuFlyoutKeyboardHelper
 	{
-		private static object? lastActivatedTarget;
-		private static long lastActivatedTick;
+		private static bool commandActivated;
+		private static VirtualKey? consumedKey;
+		private static Action? pendingCommand;
+
+		private static readonly DependencyProperty IsRootAttachedProperty =
+			DependencyProperty.RegisterAttached("IsRootAttached", typeof(bool), typeof(MenuFlyoutKeyboardHelper), new PropertyMetadata(false));
 
 		private static readonly DependencyProperty IsAttachedProperty =
 			DependencyProperty.RegisterAttached("IsAttached", typeof(bool), typeof(MenuFlyoutKeyboardHelper), new PropertyMetadata(false));
@@ -66,6 +70,7 @@ namespace Files.App.Helpers.ContextFlyouts
 
 			flyout.SetValue(IsFlyoutAttachedProperty, true);
 			flyout.Opening += Flyout_Opening;
+			flyout.Opened += Flyout_Opened;
 			flyout.Closed += Flyout_Closed;
 		}
 
@@ -74,9 +79,60 @@ namespace Files.App.Helpers.ContextFlyouts
 		/// </summary>
 		public static void PrepareOpen(MenuFlyout flyout)
 		{
+			commandActivated = false;
+			pendingCommand = null;
 			App.LastOpenedFlyout = flyout;
+			AttachRoot(flyout.XamlRoot?.Content);
 			AttachItems(flyout.Items);
 			ApplyAccelerators(flyout.Items);
+		}
+
+		public static void RefreshOpenMenu()
+		{
+			if (App.LastOpenedFlyout is not MenuFlyout { IsOpen: true } flyout)
+				return;
+			AttachRoot(flyout.XamlRoot?.Content);
+			AttachItems(flyout.Items);
+			ApplyAccelerators(flyout.Items);
+		}
+
+		public static bool ShouldSuppressListCharacter(char character)
+		{
+			if (App.LastOpenedFlyout is { IsOpen: true })
+				return true;
+			return consumedKey is { } key && IsModifierDown(key) &&
+				TryGetCharacter(key, out char mnemonic) && char.ToUpperInvariant(character) == mnemonic;
+		}
+
+		private static void AttachRoot(UIElement? root)
+		{
+			if (root is null || root.GetValue(IsRootAttachedProperty) is true)
+				return;
+			root.SetValue(IsRootAttachedProperty, true);
+			root.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(Root_PreviewKeyDown), true);
+			root.AddHandler(UIElement.KeyUpEvent, new KeyEventHandler(Root_KeyUp), true);
+		}
+
+		private static void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+		{
+			if (consumedKey == e.Key && e.KeyStatus.WasKeyDown)
+			{
+				e.Handled = true;
+				return;
+			}
+			// A new key must not execute a command left pending after the window lost focus.
+			consumedKey = null;
+			pendingCommand = null;
+		}
+
+		private static void Root_KeyUp(object sender, KeyRoutedEventArgs e)
+		{
+			if (consumedKey != e.Key)
+				return;
+			consumedKey = null;
+			var command = pendingCommand;
+			pendingCommand = null;
+			command?.Invoke();
 		}
 
 		/// <summary>
@@ -154,6 +210,7 @@ namespace Files.App.Helpers.ContextFlyouts
 						return;
 
 					args.Handled = true;
+					consumedKey = (VirtualKey)key;
 					Activate(element, key, fallback);
 				};
 
@@ -192,6 +249,12 @@ namespace Files.App.Helpers.ContextFlyouts
 			ClearAccelerators(flyout.Items);
 		}
 
+		private static void Flyout_Opened(object? sender, object e)
+		{
+			if (sender is MenuFlyout flyout)
+				AttachRoot(flyout.XamlRoot?.Content);
+		}
+
 		private static void Presenter_KeyDown(object sender, KeyRoutedEventArgs e)
 		{
 			// The menu presenter handles key input itself and marks it handled, so the event state cannot be
@@ -203,7 +266,7 @@ namespace Files.App.Helpers.ContextFlyouts
 		{
 			// Preview and bubble handlers, and the item and presenter handlers, all receive the same key
 			// event; the first one that acts marks it handled.
-			if (e.Handled)
+			if (e.Handled && (sender is not MenuFlyoutPresenter || consumedKey == e.Key && e.KeyStatus.WasKeyDown))
 				return;
 
 			if (sender is not UIElement source || !TryGetCharacter(e.Key, out char character))
@@ -222,6 +285,7 @@ namespace Files.App.Helpers.ContextFlyouts
 				return;
 
 			e.Handled = true;
+			consumedKey = e.Key;
 			activation();
 		}
 
@@ -237,7 +301,7 @@ namespace Files.App.Helpers.ContextFlyouts
 
 			if (source.XamlRoot is { } xamlRoot &&
 				FocusManager.GetFocusedElement(xamlRoot) is DependencyObject focused &&
-				GetOwnerItemsControl(focused) is { } level)
+				GetOwnerItemsControl(focused) is MenuFlyoutPresenter level)
 			{
 				ResolveActivation(level, character)?.Invoke();
 				return;
@@ -398,24 +462,24 @@ namespace Files.App.Helpers.ContextFlyouts
 		{
 			if (menuItem.Command is { } command)
 			{
-				if (!command.CanExecute(menuItem.CommandParameter) || !TryBeginActivation(menuItem))
+				if (!command.CanExecute(menuItem.CommandParameter) || !TryBeginActivation())
 					return;
 
 				// A click toggles the item before running its command; mirror that for the keyboard path.
 				if (menuItem is ToggleMenuFlyoutItem toggleItem)
 					toggleItem.IsChecked = !toggleItem.IsChecked;
 
-				CloseFlyout();
-				menuItem.DispatcherQueue.TryEnqueue(() =>
+				var parameter = menuItem.CommandParameter;
+				QueueCommand(menuItem, () =>
 				{
-					if (command.CanExecute(menuItem.CommandParameter))
-						command.Execute(menuItem.CommandParameter);
+					if (command.CanExecute(parameter))
+						command.Execute(parameter);
 				});
 				return;
 			}
 
 			// Checkable items bound straight to their IsChecked state have no command.
-			if (menuItem is ToggleMenuFlyoutItem boundToggle && TryBeginActivation(boundToggle))
+			if (menuItem is ToggleMenuFlyoutItem boundToggle && TryBeginActivation())
 			{
 				boundToggle.IsChecked = !boundToggle.IsChecked;
 				CloseFlyout();
@@ -424,26 +488,33 @@ namespace Files.App.Helpers.ContextFlyouts
 
 		private static void InvokeButton(Button button)
 		{
-			if (button.Command is not { } command || !command.CanExecute(button.CommandParameter) || !TryBeginActivation(button))
+			if (button.Command is not { } command || !command.CanExecute(button.CommandParameter) || !TryBeginActivation())
 				return;
 
-			CloseFlyout();
-			button.DispatcherQueue.TryEnqueue(() =>
+			var parameter = button.CommandParameter;
+			QueueCommand(button, () =>
 			{
-				if (command.CanExecute(button.CommandParameter))
-					command.Execute(button.CommandParameter);
+				if (command.CanExecute(parameter))
+					command.Execute(parameter);
 			});
 		}
 
-		private static bool TryBeginActivation(object target)
+		private static void QueueCommand(UIElement source, Action command)
 		{
-			var now = Stopwatch.GetTimestamp();
-			if (ReferenceEquals(lastActivatedTarget, target) && now - lastActivatedTick < Stopwatch.Frequency / 4)
+			// Finish the mnemonic's key/character sequence before an editor can acquire focus.
+			void Enqueue() => source.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => command());
+			CloseFlyout();
+			if (consumedKey is { } key && IsModifierDown(key))
+				pendingCommand = Enqueue;
+			else
+				Enqueue();
+		}
+
+		private static bool TryBeginActivation()
+		{
+			if (commandActivated)
 				return false;
-
-			lastActivatedTarget = target;
-			lastActivatedTick = now;
-
+			commandActivated = true;
 			return true;
 		}
 

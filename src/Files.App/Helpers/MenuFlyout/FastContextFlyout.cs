@@ -87,6 +87,7 @@ namespace Files.App.Helpers.ContextFlyouts
 			ContextFlyoutModelToElementHelper.GetMenuFlyoutItemsFromModel(secondary)?.ForEach(Flyout.Items.Add);
 
 			ApplyEstimatedWidth(secondary, primary.Count);
+			MenuFlyoutKeyboardHelper.ApplyAccelerators(Flyout.Items);
 		}
 
 		/// <summary>
@@ -453,6 +454,7 @@ namespace Files.App.Helpers.ContextFlyouts
 					{
 						subItem.Items.Clear();
 						items.ForEach(subItem.Items.Add);
+						MenuFlyoutKeyboardHelper.RefreshOpenMenu();
 					}
 					else
 					{
@@ -503,7 +505,7 @@ namespace Files.App.Helpers.ContextFlyouts
 					return;
 
 				// Items created outside the model helper (tags, overflow, primary row) need the handler too.
-				MenuFlyoutKeyboardHelper.AttachItems(Flyout.Items);
+				MenuFlyoutKeyboardHelper.RefreshOpenMenu();
 
 				Popup? popup = null;
 				MenuFlyoutPresenter? presenter = null;
