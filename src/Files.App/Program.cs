@@ -43,6 +43,10 @@ namespace Files.App
 
 		static Program()
 		{
+			// Must run before any launch side effect below; an elevated UI cannot exchange drag and drop with the desktop.
+			if (UnelevatedRelaunchHelper.TryRelaunch())
+				Environment.Exit(0);
+
 			// Capture the source process's working directory before any potential
 			// activation redirect, so a receiving instance can resolve relative
 			// paths like "." against the terminal's CWD rather than its own. (#16982)

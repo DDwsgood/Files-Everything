@@ -34,6 +34,15 @@ SetForegroundWindow
 GetForegroundWindow
 GetCurrentThreadId
 GetWindowThreadProcessId
+GetShellWindow
+AllowSetForegroundWindow
+OpenProcess
+OpenProcessToken
+GetTokenInformation
+EqualSid
+CloseHandle
+TOKEN_ELEVATION_TYPE
+TOKEN_USER
 AttachThreadInput
 SetWindowPos
 SetFocus

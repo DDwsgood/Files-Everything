@@ -23,6 +23,15 @@ namespace Files.App.Utils.Shell
 		private const int QueryActiveShellViewSlot = 15;
 		private const int GetFolderSlot = 5;
 		private const int GetCurrentFolderSlot = 5;
+		private const int FindWindowSlot = 15;
+		private const int GetItemObjectSlot = 15;
+		private const int GetApplicationSlot = 7;
+		private const int ShellExecuteSlot = 31;
+		private const int CsidlDesktop = 0;
+		private const int ShellWindowClassDesktop = 8;
+		private const int FindWindowNeedDispatch = 1;
+		private const uint BackgroundViewItem = 0;
+		private const int ShowNormal = 1;
 
 		private static readonly Guid ShellWindowsClassId = new("9BA05972-F6A8-11CF-A442-00A0C90A8F39");
 		private static readonly Guid ShellWindowsInterfaceId = new("85CB6900-4D95-11CF-960C-0080C7F4EE85");
@@ -31,6 +40,9 @@ namespace Files.App.Utils.Shell
 		private static readonly Guid ShellBrowserInterfaceId = new("000214E2-0000-0000-C000-000000000046");
 		private static readonly Guid FolderViewInterfaceId = new("CDE725B0-CCC9-4519-917E-325D72FAB4CE");
 		private static readonly Guid PersistFolder2InterfaceId = new("1AC3D9F0-175C-11D1-95BE-00609797EA4F");
+		private static readonly Guid DispatchInterfaceId = new("00020400-0000-0000-C000-000000000046");
+		private static readonly Guid ShellFolderViewDualInterfaceId = new("E7A1AF80-4D96-11CF-960C-0080C7F4EE85");
+		private static readonly Guid ShellDispatch2InterfaceId = new("A4C6892C-3BA9-11D2-9DEA-00C04FB16162");
 
 		private void* shellWindows;
 
@@ -77,6 +89,77 @@ namespace Files.App.Utils.Shell
 		{
 			Release(ref shellWindows);
 			GC.SuppressFinalize(this);
+		}
+
+		/// <summary>Runs a file through the desktop's IShellDispatch2.ShellExecute, so it starts with the desktop shell's token.</summary>
+		public bool TryShellExecuteFromDesktop(string file, string arguments, string directory)
+		{
+			ObjectDisposedException.ThrowIf(shellWindows is null, this);
+			void* desktopDispatch = null;
+			void* serviceProvider = null;
+			void* shellBrowser = null;
+			void* shellView = null;
+			void* backgroundDispatch = null;
+			void* folderView = null;
+			void* applicationDispatch = null;
+			void* shellDispatch = null;
+			ComVariant location = ComVariant.Create(CsidlDesktop);
+			ComVariant root = default;
+			ComVariant fileArgument = ComVariant.Create(file);
+			ComVariant argumentsArgument = ComVariant.Create(arguments);
+			ComVariant directoryArgument = ComVariant.Create(directory);
+			ComVariant operation = ComVariant.Create(string.Empty);
+			ComVariant show = ComVariant.Create(ShowNormal);
+			try
+			{
+				var findWindow = (delegate* unmanaged[MemberFunction]<void*, ComVariant*, ComVariant*, int, int*, int, void**, int>)GetVtable(shellWindows)[FindWindowSlot];
+				int desktopWindow = 0;
+				if (new HRESULT(findWindow(shellWindows, &location, &root, ShellWindowClassDesktop, &desktopWindow, FindWindowNeedDispatch, &desktopDispatch)).Failed || desktopDispatch is null)
+					return false;
+				if (QueryInterface(desktopDispatch, ServiceProviderInterfaceId, out serviceProvider).Failed || serviceProvider is null)
+					return false;
+
+				var queryService = (delegate* unmanaged[MemberFunction]<void*, Guid*, Guid*, void**, int>)GetVtable(serviceProvider)[QueryServiceSlot];
+				Guid serviceId = TopLevelBrowserServiceId;
+				Guid browserId = ShellBrowserInterfaceId;
+				if (new HRESULT(queryService(serviceProvider, &serviceId, &browserId, &shellBrowser)).Failed || shellBrowser is null)
+					return false;
+
+				var queryActiveShellView = (delegate* unmanaged[MemberFunction]<void*, void**, int>)GetVtable(shellBrowser)[QueryActiveShellViewSlot];
+				if (new HRESULT(queryActiveShellView(shellBrowser, &shellView)).Failed || shellView is null)
+					return false;
+
+				var getItemObject = (delegate* unmanaged[MemberFunction]<void*, uint, Guid*, void**, int>)GetVtable(shellView)[GetItemObjectSlot];
+				Guid dispatchId = DispatchInterfaceId;
+				if (new HRESULT(getItemObject(shellView, BackgroundViewItem, &dispatchId, &backgroundDispatch)).Failed || backgroundDispatch is null)
+					return false;
+				if (QueryInterface(backgroundDispatch, ShellFolderViewDualInterfaceId, out folderView).Failed || folderView is null)
+					return false;
+
+				var getApplication = (delegate* unmanaged[MemberFunction]<void*, void**, int>)GetVtable(folderView)[GetApplicationSlot];
+				if (new HRESULT(getApplication(folderView, &applicationDispatch)).Failed || applicationDispatch is null)
+					return false;
+				if (QueryInterface(applicationDispatch, ShellDispatch2InterfaceId, out shellDispatch).Failed || shellDispatch is null)
+					return false;
+
+				var shellExecute = (delegate* unmanaged[MemberFunction]<void*, nint, ComVariant, ComVariant, ComVariant, ComVariant, int>)GetVtable(shellDispatch)[ShellExecuteSlot];
+				return new HRESULT(shellExecute(shellDispatch, fileArgument.GetRawDataRef<nint>(), argumentsArgument, directoryArgument, operation, show)).Succeeded;
+			}
+			finally
+			{
+				fileArgument.Dispose();
+				argumentsArgument.Dispose();
+				directoryArgument.Dispose();
+				operation.Dispose();
+				Release(ref shellDispatch);
+				Release(ref applicationDispatch);
+				Release(ref folderView);
+				Release(ref backgroundDispatch);
+				Release(ref shellView);
+				Release(ref shellBrowser);
+				Release(ref serviceProvider);
+				Release(ref desktopDispatch);
+			}
 		}
 
 		[LibraryImport("ole32.dll", EntryPoint = "CoCreateInstance")]
