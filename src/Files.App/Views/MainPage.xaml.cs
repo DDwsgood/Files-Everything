@@ -327,6 +327,7 @@ namespace Files.App.Views
 		private void Page_Loaded(object sender, RoutedEventArgs e)
 		{
 			ViewModel.OnPageLoaded();
+			ElevatedDragDropManager.EnsureRegistered(MainWindow.Instance.WindowHandle);
 
 			MainWindow.Instance.AppWindow.Changed += (_, _) => MainWindow.Instance.RaiseSetTitleBarDragRegion(SetTitleBarDragRegion);
 
@@ -603,6 +604,16 @@ namespace Files.App.Views
 
 			if (deferral is not null)
 				SafetyExtensions.IgnoreExceptions(() => deferral.Complete(), App.Logger);
+		}
+
+		private void SidebarControl_ItemDragStarting(object sender, DragStartingEventArgs e)
+		{
+			if (!WindowContext.IsRunningAsAdmin)
+				return;
+
+			e.Cancel = true;
+			if (sender is SidebarItem { Item.Path: { Length: > 0 } dragPath } && System.IO.Path.IsPathRooted(dragPath))
+				ElevatedDragDropManager.StartDragDropFromPaths([dragPath]);
 		}
 
 		private void SidebarControl_ItemInvoked(object sender, ItemInvokedEventArgs e)

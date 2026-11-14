@@ -41,9 +41,16 @@ namespace Files.App.UserControls
 			if (ItemsSource is null)
 				return;
 
-			// Get items
-			var storageService = Ioc.Default.GetRequiredService<IStorageService>();
 			var storageItems = (await FilesystemHelpers.GetDraggedStorageItems(e.DataView)).ToArray();
+			await AddItemsAsync(storageItems);
+		}
+
+		public async Task AddItemsAsync(IReadOnlyList<IStorageItemWithPath> storageItems)
+		{
+			if (ItemsSource is null || storageItems.Count is 0)
+				return;
+
+			var storageService = Ioc.Default.GetRequiredService<IStorageService>();
 
 			// Add to list
 			foreach (var item in storageItems)
@@ -72,6 +79,14 @@ namespace Files.App.UserControls
 		private void ListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
 		{
 			string[] paths = e.Items.Cast<ShelfItem>().Select(item => item.Inner.Id).ToArray();
+			if (Ioc.Default.GetRequiredService<IWindowsSecurityService>().IsAppElevated())
+			{
+				e.Cancel = true;
+				if (paths.Length > 0)
+					ElevatedDragDropManager.StartDragDropFromPaths(paths, isFromShelf: true);
+				return;
+			}
+
 			if (paths.Length is 0)
 				return;
 

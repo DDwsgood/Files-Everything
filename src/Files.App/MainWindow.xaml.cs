@@ -41,6 +41,8 @@ namespace Files.App
 			// Deferred: reads the .ico from disk
 			DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
 				AppWindow.SetIcon(AppLifecycleHelper.AppIconPath));
+
+			Closed += (_, _) => ElevatedDragDropManager.Unregister();
 		}
 
 		public void ShowSplashScreen()
@@ -258,6 +260,8 @@ namespace Files.App
 					// Place the frame in the current Window
 					Instance.Content = rootFrame;
 				}
+
+				ElevatedDragDropManager.EnsureRegistered(WindowHandle);
 
 				return rootFrame;
 			}

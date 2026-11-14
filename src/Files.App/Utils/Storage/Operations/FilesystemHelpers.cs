@@ -293,6 +293,75 @@ namespace Files.App.Utils.Storage
 			}
 		}
 
+		public async Task<ReturnResult> PerformOperationTypeAsync(
+			DataPackageOperation operation,
+			IReadOnlyList<IStorageItemWithPath> source,
+			string destination,
+			bool showDialog,
+			bool registerHistory,
+			bool isTargetExecutable = false,
+			bool isTargetScriptFile = false)
+		{
+			if (string.IsNullOrEmpty(destination) || source.Count is 0)
+				return default;
+
+			if (destination.StartsWith(Constants.UserEnvironmentPaths.RecycleBinPath, StringComparison.Ordinal))
+			{
+				var recycleSource = source.Where(x => !StorageTrashBinService.IsUnderTrashBin(x.Path));
+				return await DeleteItemsAsync(recycleSource, UserSettingsService.FoldersSettingsService.DeleteConfirmationPolicy, false, registerHistory);
+			}
+
+			if (!operation.HasFlag(DataPackageOperation.Move) &&
+				!operation.HasFlag(DataPackageOperation.Copy) &&
+				operation.HasFlag(DataPackageOperation.Link))
+			{
+				if (isTargetExecutable || isTargetScriptFile)
+				{
+					await NavigationHelpers.OpenItemsWithExecutableAsync(associatedInstance, source, destination);
+					return ReturnResult.Success;
+				}
+
+				var returnStatus = ReturnResult.InProgress;
+				var progress = new Progress<StatusCenterItemProgressModel>();
+				progress.ProgressChanged += (s, e) => returnStatus = returnStatus < ReturnResult.Failed ? e.Status!.Value.ToStatus() : returnStatus;
+
+				var validSource = source.Where(x => !string.IsNullOrEmpty(x.Path)).ToList();
+				var dest = validSource.Select(x => Path.Combine(destination, GetShortcutNamingPreference(x.Name))).ToList();
+				var history = await filesystemOperations.CreateShortcutItemsAsync(validSource, dest, progress, cancellationToken);
+				if (registerHistory)
+					App.HistoryWrapper.AddHistory(history);
+
+				await Task.Yield();
+				return returnStatus;
+			}
+
+			var destinations = new List<string>(source.Count);
+			List<ShellFileItem>? binItems = null;
+			foreach (var item in source)
+			{
+				if (StorageTrashBinService.IsUnderTrashBin(item.Path))
+				{
+					binItems ??= await StorageTrashBinService.GetAllRecycleBinFoldersAsync();
+					var matchingItem = !binItems.IsEmpty()
+						? binItems.FirstOrDefault(x => x.RecyclePath == item.Path)
+						: null;
+					destinations.Add(PathNormalization.Combine(destination, matchingItem?.FileName ?? item.Name));
+				}
+				else
+				{
+					destinations.Add(PathNormalization.Combine(destination, item.Name));
+				}
+			}
+
+			if (operation.HasFlag(DataPackageOperation.Move))
+				return await MoveItemsAsync(source, destinations, showDialog, registerHistory);
+
+			if (operation.HasFlag(DataPackageOperation.Copy) || operation == DataPackageOperation.None)
+				return await CopyItemsAsync(source, destinations, showDialog, registerHistory);
+
+			return default;
+		}
+
 		public Task<ReturnResult> CopyItemsAsync(IEnumerable<IStorageItem> source, IEnumerable<string> destination, bool showDialog, bool registerHistory)
 			=> CopyItemsAsync(source.Select(item => item.FromStorageItem()
 				?? throw new InvalidOperationException("A storage item could not be converted for copying.")), destination, showDialog, registerHistory);

@@ -154,6 +154,7 @@
 			IsPaneOpen="{x:Bind ViewModel.IsSidebarPaneOpen, Mode=TwoWay}"
 			ItemContextInvoked="SidebarControl_ItemContextInvoked"
 			ItemDragOver="SidebarControl_ItemDragOver"
+			ItemDragStarting="SidebarControl_ItemDragStarting"
 			ItemDropped="SidebarControl_ItemDropped"
 			ItemInvoked="SidebarControl_ItemInvoked"
 			Loaded="SidebarControl_Loaded"

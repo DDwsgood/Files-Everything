@@ -154,7 +154,7 @@
 						VerticalScrollMode="Enabled">
 						<TreeView
 							AllowDrop="False"
-							CanDragItems="True"
+							CanDragItems="{x:Bind AllowItemsDrag, Mode=OneTime}"
 							DragItemsCompleted="AvailableToolbarItemsTree_DragItemsCompleted"
 							DragItemsStarting="AvailableToolbarItemsTree_DragItemsStarting"
 							ItemInvoked="AvailableToolbarItemsTree_ItemInvoked"
@@ -188,9 +188,9 @@
 				<ListView
 					x:Name="ToolbarItemsList"
 					Padding="4"
-					AllowDrop="True"
-					CanDragItems="True"
-					CanReorderItems="True"
+					AllowDrop="{x:Bind AllowItemsDrag, Mode=OneTime}"
+					CanDragItems="{x:Bind AllowItemsDrag, Mode=OneTime}"
+					CanReorderItems="{x:Bind AllowItemsDrag, Mode=OneTime}"
 					ContainerContentChanging="ToolbarItemsList_ContainerContentChanging"
 					DragOver="AddedToolbarItemsList_DragOver"
 					Drop="AddedToolbarItemsList_Drop"

@@ -20,6 +20,7 @@ namespace Files.App.Controls
 		public event EventHandler<ItemContextInvokedArgs>? ItemContextInvoked;
 		public event EventHandler<ItemDragOverEventArgs>? ItemDragOver;
 		public event EventHandler<ItemDroppedEventArgs>? ItemDropped;
+		public event EventHandler<DragStartingEventArgs>? ItemDragStarting;
 		internal SidebarItem? SelectedItemContainer = null;
 
 		private bool draggingSidebarResizer;
@@ -59,6 +60,11 @@ namespace Files.App.Controls
 		{
 			if (sideBarItem.Item is null) return;
 			ItemDragOver?.Invoke(this, new(sideBarItem.Item, rawEvent.DataView, dropPosition, rawEvent));
+		}
+
+		internal void RaiseItemDragStarting(SidebarItem sideBarItem, DragStartingEventArgs args)
+		{
+			ItemDragStarting?.Invoke(sideBarItem, args);
 		}
 
 		private void UpdateMinimalMode()

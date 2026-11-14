@@ -256,6 +256,10 @@ namespace Files.App.Controls
 
 		private void SidebarItem_DragStarting(UIElement sender, DragStartingEventArgs args)
 		{
+			Owner?.RaiseItemDragStarting(this, args);
+			if (args.Cancel)
+				return;
+
 			if (Item?.Path is not string dragPath || !Path.IsPathRooted(dragPath))
 				return;
 

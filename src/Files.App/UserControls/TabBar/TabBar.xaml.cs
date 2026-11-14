@@ -112,7 +112,7 @@ namespace Files.App.UserControls.TabBar
 				return;
 
 			await tabContent.TabItemDrop(sender, e);
-			HorizontalTabView.CanReorderTabs = true;
+			HorizontalTabView.CanReorderTabs = WindowContext.CanDragAndDrop;
 			tabHoverTimer.Stop();
 		}
 

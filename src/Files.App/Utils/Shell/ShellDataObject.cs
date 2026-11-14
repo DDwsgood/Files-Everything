@@ -74,6 +74,82 @@ namespace Files.App.Utils.Shell
 			}
 		}
 
+		/// <summary>Creates a Shell data object for drag-and-drop with both Shell IDList Array and CF_HDROP formats.</summary>
+		public static IDataObject CreateForDrag(IReadOnlyList<ShellItem> items, IReadOnlyList<string> paths)
+		{
+			IDataObject dataObject = Create(items);
+			if (paths.Count > 0)
+				SetFileDropList(dataObject, paths);
+			return dataObject;
+		}
+
+		/// <summary>Determines whether a data object contains a CF_HDROP file drop list.</summary>
+		public static bool HasFileDropList(IDataObject dataObject)
+		{
+			FORMATETC formatEtc = new()
+			{
+				cfFormat = CfHDrop,
+				dwAspect = (uint)DVASPECT.DVASPECT_CONTENT,
+				lindex = -1,
+				tymed = (uint)TYMED.TYMED_HGLOBAL,
+			};
+			return dataObject.QueryGetData(formatEtc).Succeeded;
+		}
+
+		/// <summary>Reads the CF_HDROP file list from a data object.</summary>
+		public static IReadOnlyList<string> GetFileDropList(IDataObject dataObject)
+		{
+			FORMATETC formatEtc = new()
+			{
+				cfFormat = CfHDrop,
+				dwAspect = (uint)DVASPECT.DVASPECT_CONTENT,
+				lindex = -1,
+				tymed = (uint)TYMED.TYMED_HGLOBAL,
+			};
+			if (dataObject.GetData(formatEtc, out STGMEDIUM medium).Failed)
+				return [];
+
+			void* data = null;
+			try
+			{
+				if (medium.tymed != TYMED.TYMED_HGLOBAL)
+					return [];
+
+				data = PInvoke.GlobalLock(medium.u.hGlobal);
+				if (data is null)
+					return [];
+
+				HDROP dropStructHandle = new((nint)data);
+				uint filesCount = PInvoke.DragQueryFile(dropStructHandle, uint.MaxValue, Span<char>.Empty);
+				if (filesCount is 0)
+					return [];
+
+				var itemPaths = new List<string>((int)filesCount);
+				for (uint i = 0; i < filesCount; i++)
+				{
+					uint charsNeeded = PInvoke.DragQueryFile(dropStructHandle, i, Span<char>.Empty);
+					if (charsNeeded is 0)
+						continue;
+
+					char[] buffer = new char[charsNeeded + 1];
+					uint charsCopied = PInvoke.DragQueryFile(dropStructHandle, i, buffer);
+					if (charsCopied > 0)
+					{
+						string path = new(buffer, 0, (int)charsCopied);
+						itemPaths.Add(System.IO.Path.GetFullPath(path));
+					}
+				}
+
+				return itemPaths;
+			}
+			finally
+			{
+				if (data is not null)
+					PInvoke.GlobalUnlock(medium.u.hGlobal);
+				PInvoke.ReleaseStgMedium(ref medium);
+			}
+		}
+
 		/// <summary>Places file system paths on the clipboard with the specified preferred drop effect.</summary>
 		public static void SetClipboard(IReadOnlyList<string> paths, uint preferredDropEffect)
 		{

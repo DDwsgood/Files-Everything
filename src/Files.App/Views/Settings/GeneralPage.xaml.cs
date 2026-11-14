@@ -9,6 +9,8 @@ namespace Files.App.Views.Settings
 {
 	public sealed partial class GeneralPage : Page
 	{
+		public bool AllowItemsDrag
+			=> Ioc.Default.GetRequiredService<IWindowContext>().CanDragAndDrop;
 
 		public GeneralPage()
 		{

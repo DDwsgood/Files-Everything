@@ -32,6 +32,9 @@ namespace Files.App.Dialogs
 		[DynamicWindowsRuntimeCast(typeof(FontIcon))]
 		private async void MoveItemAsync(object sender, PointerRoutedEventArgs e)
 		{
+			if (Ioc.Default.GetRequiredService<IWindowContext>().IsRunningAsAdmin)
+				return;
+
 			var properties = e.GetCurrentPoint(null).Properties;
 			if (!properties.IsLeftButtonPressed)
 				return;
@@ -46,6 +49,12 @@ namespace Files.App.Dialogs
 		[DynamicWindowsRuntimeCast(typeof(Grid))]
 		private void ListViewItem_DragStarting(object sender, DragStartingEventArgs e)
 		{
+			if (Ioc.Default.GetRequiredService<IWindowContext>().IsRunningAsAdmin)
+			{
+				e.Cancel = true;
+				return;
+			}
+
 			if (sender is not Grid nav || nav.DataContext is not LocationItem)
 				return;
 

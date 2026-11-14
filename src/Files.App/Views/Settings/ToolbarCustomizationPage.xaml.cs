@@ -28,6 +28,7 @@ namespace Files.App.Views.Settings
 		private static readonly Thickness ItemDividerThickness = new(0, 0, 0, 1);
 		private static readonly Thickness NoBorderThickness = new(0);
 		public FrameworkElement TitleBarElement => WindowTitleBar;
+		public bool AllowItemsDrag => Ioc.Default.GetRequiredService<IWindowContext>().CanDragAndDrop;
 
 		public ToolbarCustomizationPage()
 		{
@@ -165,6 +166,13 @@ namespace Files.App.Views.Settings
 
 		private void AvailableToolbarItemsTree_DragItemsStarting(TreeView sender, TreeViewDragItemsStartingEventArgs e)
 		{
+			if (!AllowItemsDrag)
+			{
+				draggedAvailableItem = null;
+				e.Cancel = true;
+				return;
+			}
+
 			var treeItem = e.Items.OfType<ToolbarAvailableTreeItem>().FirstOrDefault() ?? sender.SelectedItem as ToolbarAvailableTreeItem;
 			if (treeItem?.ToolbarItem is not { } item)
 			{

@@ -42,6 +42,7 @@ namespace Files.App.Views.Layouts
 		public InfoPaneViewModel InfoPaneViewModel { get; } = Ioc.Default.GetRequiredService<InfoPaneViewModel>();
 		protected readonly IWindowContext WindowContext = Ioc.Default.GetRequiredService<IWindowContext>();
 		protected readonly IStorageTrashBinService StorageTrashBinService = Ioc.Default.GetRequiredService<IStorageTrashBinService>();
+		protected readonly IWindowsSecurityService WindowsSecurityService = Ioc.Default.GetRequiredService<IWindowsSecurityService>();
 
 		// ViewModels
 
@@ -99,7 +100,7 @@ namespace Files.App.Views.Layouts
 			=> App.AppModel;
 
 		public bool AllowItemDrag
-			=> WindowContext.CanDragAndDrop;
+			=> true;
 
 		protected FastContextFlyout ItemContextFlyoutHost { get; } = new();
 		protected FastContextFlyout BaseContextFlyoutHost { get; } = new();
@@ -1028,6 +1029,26 @@ namespace Files.App.Views.Layouts
 				var shellItemList = SafetyExtensions.IgnoreExceptions(() => orderedItems.Select(item => new ShellItem(item.GetRequiredPath())).ToArray());
 				try
 				{
+					if (WindowsSecurityService.IsAppElevated())
+					{
+						e.Cancel = true;
+
+						if (shellItemList is { Length: > 0 })
+						{
+							var paths = orderedItems.Select(x => x.ItemPath).Where(p => !string.IsNullOrEmpty(p)).ToArray();
+							itemDragging = true;
+							try
+							{
+								ElevatedDragDropManager.StartDragDrop(shellItemList, paths);
+							}
+							finally
+							{
+								itemDragging = false;
+							}
+						}
+						return;
+					}
+
 					if (shellItemList?[0].FileSystemPath is not null && !instanceViewModel.IsPageTypeSearchResults)
 					{
 						var dataObject = ShellDataObject.Create(shellItemList);

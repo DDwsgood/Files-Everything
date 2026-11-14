@@ -35,7 +35,20 @@ namespace Files.App.UserControls.Widgets
 
 		private async void RecentFilesListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
 		{
-			var item = e.Items.OfType<RecentItem>().First();
+			var item = e.Items.OfType<RecentItem>().FirstOrDefault();
+			if (item is null || string.IsNullOrEmpty(item.Path))
+			{
+				e.Cancel = true;
+				return;
+			}
+
+			if (Ioc.Default.GetRequiredService<IWindowsSecurityService>().IsAppElevated())
+			{
+				e.Cancel = true;
+				ElevatedDragDropManager.StartDragDropFromPaths([item.Path]);
+				return;
+			}
+
 			var storageItems = new List<IStorageItem>();
 
 			try

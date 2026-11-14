@@ -116,6 +116,8 @@ namespace Files.App.Utils.Storage
 		/// <returns><see cref="ReturnResult"/> of performed operation</returns>
 		Task<ReturnResult> PerformOperationTypeAsync(DataPackageOperation operation, DataPackageView packageView, string destination, bool showDialog, bool registerHistory, bool isDestinationExecutable = false, bool isDestinationScript = false);
 
+		Task<ReturnResult> PerformOperationTypeAsync(DataPackageOperation operation, IReadOnlyList<IStorageItemWithPath> source, string destination, bool showDialog, bool registerHistory, bool isDestinationExecutable = false, bool isDestinationScript = false);
+
 		#region Copy
 
 		/// <summary>
