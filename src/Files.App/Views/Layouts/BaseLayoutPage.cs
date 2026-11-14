@@ -1035,7 +1035,7 @@ namespace Files.App.Views.Layouts
 
 						if (shellItemList is { Length: > 0 })
 						{
-							var paths = orderedItems.Select(x => x.ItemPath).Where(p => !string.IsNullOrEmpty(p)).ToArray();
+							var paths = orderedItems.Select(x => x.ItemPath).OfType<string>().Where(p => p.Length > 0).ToArray();
 							itemDragging = true;
 							try
 							{

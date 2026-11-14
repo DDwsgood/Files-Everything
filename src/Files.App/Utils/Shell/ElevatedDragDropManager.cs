@@ -30,9 +30,10 @@ namespace Files.App.Utils.Shell
 	/// Provides classic Win32 OLE drag-and-drop (<c>RegisterDragDrop</c> and <c>DoDragDrop</c>)
 	/// when the process runs elevated, bypassing <c>DataExchangeHost.exe</c>'s Medium-IL restriction.
 	/// </summary>
-	internal static unsafe partial class ElevatedDragDropManager
+	internal static partial class ElevatedDragDropManager
 	{
 		private const uint WM_COPYGLOBALDATA = 0x0049;
+		private const MODIFIERKEYS_FLAGS MkAlt = (MODIFIERKEYS_FLAGS)0x0020;
 
 		private static readonly HashSet<nint> _registeredHwnds = [];
 		private static bool _oleInitialized;
@@ -42,7 +43,7 @@ namespace Files.App.Utils.Shell
 		/// <summary>
 		/// Ensures Win32 OLE drop targets are registered for the main window and its in-process WinUI child windows.
 		/// </summary>
-		public static void EnsureRegistered(nint mainWindowHandle)
+		public static unsafe void EnsureRegistered(nint mainWindowHandle)
 		{
 			if (mainWindowHandle == 0)
 				return;
@@ -65,7 +66,7 @@ namespace Files.App.Utils.Shell
 			while (pending.Count > 0)
 			{
 				HWND parent = pending.Dequeue();
-				if (!visited.Add(parent.Value))
+				if (!visited.Add((nint)parent.Value))
 					continue;
 
 				RegisterWindowHandle(parent);
@@ -173,14 +174,14 @@ namespace Files.App.Utils.Shell
 			}
 		}
 
-		private static bool IsCurrentProcessWindow(HWND hwnd, uint currentProcessId)
+		private static unsafe bool IsCurrentProcessWindow(HWND hwnd, uint currentProcessId)
 		{
 			uint processId = 0;
 			PInvoke.GetWindowThreadProcessId(hwnd, &processId);
 			return processId == currentProcessId;
 		}
 
-		private static void EnsureOleInitialized()
+		private static unsafe void EnsureOleInitialized()
 		{
 			if (_oleInitialized)
 				return;
@@ -189,9 +190,9 @@ namespace Files.App.Utils.Shell
 				_oleInitialized = true;
 		}
 
-		private static void RegisterWindowHandle(HWND hwnd)
+		private static unsafe void RegisterWindowHandle(HWND hwnd)
 		{
-			if (!_registeredHwnds.Add(hwnd.Value))
+			if (!_registeredHwnds.Add((nint)hwnd.Value))
 				return;
 
 			PInvoke.ChangeWindowMessageFilterEx(hwnd, PInvoke.WM_DROPFILES, WINDOW_MESSAGE_FILTER_ACTION.MSGFLT_ALLOW, null);
@@ -207,7 +208,7 @@ namespace Files.App.Utils.Shell
 			}
 
 			if (hr.Failed)
-				_registeredHwnds.Remove(hwnd.Value);
+				_registeredHwnds.Remove((nint)hwnd.Value);
 		}
 
 		[GeneratedComClass]
@@ -249,14 +250,14 @@ namespace Files.App.Utils.Shell
 			bool IsScriptFile);
 
 		[GeneratedComClass]
-		private sealed unsafe partial class WindowDropTarget : IDropTarget
+		private sealed partial class WindowDropTarget : IDropTarget
 		{
 			private readonly IDropTargetHelper? _dropTargetHelper;
 			private IReadOnlyList<IStorageItemWithPath> _draggedItems = [];
 			private DispatcherQueueTimer? _tabHoverTimer;
 			private TabBarItem? _hoveredTabItem;
 
-			public WindowDropTarget()
+			public unsafe WindowDropTarget()
 			{
 				try
 				{
@@ -274,7 +275,7 @@ namespace Files.App.Utils.Shell
 				ClearTabHover();
 			}
 
-			public HRESULT DragEnter(IDataObject pDataObj, MODIFIERKEYS_FLAGS grfKeyState, POINTL pt, DROPEFFECT* pdwEffect)
+			public unsafe HRESULT DragEnter(IDataObject pDataObj, MODIFIERKEYS_FLAGS grfKeyState, POINTL pt, DROPEFFECT* pdwEffect)
 			{
 				if (pdwEffect is null)
 					return HRESULT.E_POINTER;
@@ -286,13 +287,13 @@ namespace Files.App.Utils.Shell
 				if (_dropTargetHelper is not null && pDataObj is not null)
 				{
 					Point screenPt = new(pt.x, pt.y);
-					_dropTargetHelper.DragEnter(new(MainWindow.Instance.WindowHandle), pDataObj, &screenPt, (uint)effect);
+					_dropTargetHelper.DragEnter(new(MainWindow.Instance.WindowHandle), pDataObj, &screenPt, effect);
 				}
 
 				return HRESULT.S_OK;
 			}
 
-			public HRESULT DragOver(MODIFIERKEYS_FLAGS grfKeyState, POINTL pt, DROPEFFECT* pdwEffect)
+			public unsafe HRESULT DragOver(MODIFIERKEYS_FLAGS grfKeyState, POINTL pt, DROPEFFECT* pdwEffect)
 			{
 				if (pdwEffect is null)
 					return HRESULT.E_POINTER;
@@ -303,7 +304,7 @@ namespace Files.App.Utils.Shell
 				if (_dropTargetHelper is not null)
 				{
 					Point screenPt = new(pt.x, pt.y);
-					_dropTargetHelper.DragOver(&screenPt, (uint)effect);
+					_dropTargetHelper.DragOver(&screenPt, effect);
 				}
 
 				return HRESULT.S_OK;
@@ -316,7 +317,7 @@ namespace Files.App.Utils.Shell
 				return HRESULT.S_OK;
 			}
 
-			public HRESULT Drop(IDataObject pDataObj, MODIFIERKEYS_FLAGS grfKeyState, POINTL pt, DROPEFFECT* pdwEffect)
+			public unsafe HRESULT Drop(IDataObject pDataObj, MODIFIERKEYS_FLAGS grfKeyState, POINTL pt, DROPEFFECT* pdwEffect)
 			{
 				if (pdwEffect is null)
 					return HRESULT.E_POINTER;
@@ -332,18 +333,24 @@ namespace Files.App.Utils.Shell
 				if (_dropTargetHelper is not null && pDataObj is not null)
 				{
 					Point screenPt = new(pt.x, pt.y);
-					_dropTargetHelper.Drop(pDataObj, &screenPt, (uint)effect);
+					_dropTargetHelper.Drop(pDataObj, &screenPt, effect);
 				}
 
 				if (effect != DROPEFFECT.DROPEFFECT_NONE && items.Count > 0)
-				{
-					MainWindow.Instance.DispatcherQueue.TryEnqueue(async () =>
-					{
-						await ExecuteDropAsync(resolvedTarget, effect, items);
-					});
-				}
+					ScheduleDropExecution(resolvedTarget, effect, items);
 
 				return HRESULT.S_OK;
+			}
+
+			private static void ScheduleDropExecution(
+				ResolvedDropTarget resolvedTarget,
+				DROPEFFECT effect,
+				IReadOnlyList<IStorageItemWithPath> items)
+			{
+				MainWindow.Instance.DispatcherQueue.TryEnqueue(async () =>
+				{
+					await ExecuteDropAsync(resolvedTarget, effect, items);
+				});
 			}
 
 			private static IReadOnlyList<IStorageItemWithPath> ExtractStorageItems(IDataObject? dataObject)
@@ -360,7 +367,7 @@ namespace Files.App.Utils.Shell
 					var items = new List<IStorageItemWithPath>(paths.Count);
 					foreach (var path in paths)
 					{
-						var isDirectory = Win32Helper.HasFileAttribute(path, FileAttributes.Directory);
+						var isDirectory = Win32Helper.HasFileAttribute(path, System.IO.FileAttributes.Directory);
 						items.Add(StorageHelpers.FromPathAndType(path, isDirectory ? FilesystemItemType.Directory : FilesystemItemType.File));
 					}
 					return items.DistinctBy(x => string.IsNullOrEmpty(x.Path) ? x.Name : x.Path).ToList();
@@ -386,18 +393,19 @@ namespace Files.App.Utils.Shell
 					return DROPEFFECT.DROPEFFECT_NONE;
 				}
 
-				resolvedTarget = ResolveDropTarget(pt);
-				switch (resolvedTarget.Kind)
+				ResolvedDropTarget target = ResolveDropTarget(pt);
+				resolvedTarget = target;
+				switch (target.Kind)
 				{
 					case DropTargetKind.None:
 						return DROPEFFECT.DROPEFFECT_NONE;
 
 					case DropTargetKind.Shelf:
 					{
-						if (_isDraggingFromShelf || resolvedTarget.ShelfPane is null)
+						if (_isDraggingFromShelf || target.ShelfPane is null)
 							return DROPEFFECT.DROPEFFECT_NONE;
 
-						var existingItems = resolvedTarget.ShelfPane.ItemsSource;
+						var existingItems = target.ShelfPane.ItemsSource;
 						if (existingItems is not null &&
 							draggedItems.All(item => existingItems.Any(existing => existing.Inner.Id == item.Path)))
 						{
@@ -435,13 +443,13 @@ namespace Files.App.Utils.Shell
 					}
 
 					case DropTargetKind.Executable:
-						if (draggedItems.Any(item => string.Equals(item.Path, resolvedTarget.TargetPath, StringComparison.OrdinalIgnoreCase)))
+						if (draggedItems.Any(item => string.Equals(item.Path, target.TargetPath, StringComparison.OrdinalIgnoreCase)))
 							return DROPEFFECT.DROPEFFECT_NONE;
 						return ChooseAllowedEffect(DROPEFFECT.DROPEFFECT_LINK, allowedEffects, DROPEFFECT.DROPEFFECT_COPY);
 
 					case DropTargetKind.Folder:
 					{
-						string targetPath = resolvedTarget.TargetPath!;
+						string targetPath = target.TargetPath!;
 						if (IsSelfOrDescendantTarget(draggedItems, targetPath))
 							return DROPEFFECT.DROPEFFECT_NONE;
 
@@ -456,7 +464,7 @@ namespace Files.App.Utils.Shell
 
 						bool isCtrl = (grfKeyState & MODIFIERKEYS_FLAGS.MK_CONTROL) != 0;
 						bool isShift = (grfKeyState & MODIFIERKEYS_FLAGS.MK_SHIFT) != 0;
-						bool isAlt = (grfKeyState & MODIFIERKEYS_FLAGS.MK_ALT) != 0;
+						bool isAlt = (grfKeyState & MkAlt) != 0;
 
 						if (!isCtrl && !isAlt && draggedItems.AreItemsAlreadyInFolder(targetPath))
 							return DROPEFFECT.DROPEFFECT_NONE;
