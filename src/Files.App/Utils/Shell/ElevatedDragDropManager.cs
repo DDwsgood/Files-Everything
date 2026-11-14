@@ -23,6 +23,7 @@ using Windows.Win32.System.Ole;
 using Windows.Win32.System.SystemServices;
 using Windows.Win32.UI.Shell;
 using Windows.Win32.UI.WindowsAndMessaging;
+using WinRT;
 
 namespace Files.App.Utils.Shell
 {
@@ -582,6 +583,7 @@ namespace Files.App.Utils.Shell
 			private static ResolvedDropTarget ResolveFromElements(IEnumerable<UIElement> elements, bool allowLayoutFallback)
 				=> ResolveFromElements(elements, allowLayoutFallback, out _);
 
+			[DynamicWindowsRuntimeCast(typeof(FrameworkElement))]
 			private static ResolvedDropTarget ResolveFromElements(
 				IEnumerable<UIElement> elements,
 				bool allowLayoutFallback,
