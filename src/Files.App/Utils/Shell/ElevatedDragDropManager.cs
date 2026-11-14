@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using System.Drawing;
 using System.IO;
+using System.Runtime.InteropServices.Marshalling;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Win32;
