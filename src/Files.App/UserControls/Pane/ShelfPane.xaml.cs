@@ -76,14 +76,14 @@ namespace Files.App.UserControls
 			}
 		}
 
-		private void ListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+		private async void ListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
 		{
 			string[] paths = e.Items.Cast<ShelfItem>().Select(item => item.Inner.Id).ToArray();
 			if (Ioc.Default.GetRequiredService<IWindowsSecurityService>().IsAppElevated())
 			{
 				e.Cancel = true;
 				if (paths.Length > 0)
-					ElevatedDragDropManager.StartDragDropFromPaths(paths, isFromShelf: true);
+					await ElevatedDragDropManager.StartDragDropFromPathsAsync(paths, isFromShelf: true);
 				return;
 			}
 

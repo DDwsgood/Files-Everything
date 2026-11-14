@@ -1010,7 +1010,7 @@ namespace Files.App.Views.Layouts
 			}
 		}
 
-		protected virtual void FileList_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+		protected virtual async void FileList_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
 		{
 			try
 			{
@@ -1039,7 +1039,7 @@ namespace Files.App.Views.Layouts
 							itemDragging = true;
 							try
 							{
-								ElevatedDragDropManager.StartDragDrop(shellItemList, paths);
+								await ElevatedDragDropManager.StartDragDropAsync(shellItemList, paths);
 							}
 							finally
 							{
@@ -1086,6 +1086,9 @@ namespace Files.App.Views.Layouts
 
 		protected virtual void FileList_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
 		{
+			if (ElevatedDragDropManager.IsDragging)
+				return;
+
 			// Set can window to front (#13255)
 			itemDragging = false;
 			MainWindow.Instance.SetCanWindowToFront(true);

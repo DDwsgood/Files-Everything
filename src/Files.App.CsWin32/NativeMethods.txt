@@ -53,6 +53,12 @@ MoveFileFromApp
 DeleteFileFromApp
 RemoveDirectoryFromApp
 GetKeyState
+GetAsyncKeyState
+PeekMessage
+PostMessage
+PostThreadMessage
+GetGUIThreadInfo
+ScreenToClient
 CreateDirectoryFromApp
 WNetCancelConnection2
 NETRESOURCEW

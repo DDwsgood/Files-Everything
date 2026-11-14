@@ -606,14 +606,14 @@ namespace Files.App.Views
 				SafetyExtensions.IgnoreExceptions(() => deferral.Complete(), App.Logger);
 		}
 
-		private void SidebarControl_ItemDragStarting(object sender, DragStartingEventArgs e)
+		private async void SidebarControl_ItemDragStarting(object sender, DragStartingEventArgs e)
 		{
 			if (!WindowContext.IsRunningAsAdmin)
 				return;
 
 			e.Cancel = true;
 			if (sender is SidebarItem { Item.Path: { Length: > 0 } dragPath } && System.IO.Path.IsPathRooted(dragPath))
-				ElevatedDragDropManager.StartDragDropFromPaths([dragPath]);
+				await ElevatedDragDropManager.StartDragDropFromPathsAsync([dragPath]);
 		}
 
 		private void SidebarControl_ItemInvoked(object sender, ItemInvokedEventArgs e)

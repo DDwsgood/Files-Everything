@@ -45,7 +45,7 @@ namespace Files.App.UserControls.Widgets
 			if (Ioc.Default.GetRequiredService<IWindowsSecurityService>().IsAppElevated())
 			{
 				e.Cancel = true;
-				ElevatedDragDropManager.StartDragDropFromPaths([item.Path]);
+				await ElevatedDragDropManager.StartDragDropFromPathsAsync([item.Path]);
 				return;
 			}
 

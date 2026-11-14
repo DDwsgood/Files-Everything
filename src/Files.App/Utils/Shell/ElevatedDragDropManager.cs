@@ -16,6 +16,7 @@ using System.IO;
 using System.Runtime.InteropServices.Marshalling;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
+using Windows.System;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.Com;
@@ -40,6 +41,10 @@ namespace Files.App.Utils.Shell
 		private static bool _oleInitialized;
 		private static bool _isDraggingFromShelf;
 		private static WindowDropTarget? _dropTarget;
+		private static int _dragInProgress;
+		private static DragOperation? _activeDrag;
+
+		public static bool IsDragging => Volatile.Read(ref _dragInProgress) != 0;
 
 		/// <summary>
 		/// Ensures Win32 OLE drop targets are registered for the main window and its in-process WinUI child windows.
@@ -90,6 +95,7 @@ namespace Files.App.Utils.Shell
 		/// </summary>
 		public static void Unregister()
 		{
+			_activeDrag?.Cancel();
 			_dropTarget?.ResetTransientState();
 
 			foreach (nint hwndValue in _registeredHwnds)
@@ -101,77 +107,289 @@ namespace Files.App.Utils.Shell
 		}
 
 		/// <summary>
-		/// Starts a modal Win32 OLE drag-and-drop operation for the specified filesystem paths.
+		/// Starts Win32 OLE drag-and-drop on a dedicated STA without blocking the UI thread.
 		/// </summary>
-		public static DROPEFFECT StartDragDropFromPaths(
+		public static Task<DROPEFFECT> StartDragDropFromPathsAsync(
 			IReadOnlyList<string> paths,
 			DROPEFFECT allowedEffects = DROPEFFECT.DROPEFFECT_COPY | DROPEFFECT.DROPEFFECT_MOVE | DROPEFFECT.DROPEFFECT_LINK,
 			bool isFromShelf = false)
 		{
-			if (paths.Count is 0)
-				return DROPEFFECT.DROPEFFECT_NONE;
-
-			var shellItems = new List<ShellItem>(paths.Count);
-			var validPaths = new List<string>(paths.Count);
-			try
-			{
-				foreach (var path in paths)
-				{
-					if (string.IsNullOrEmpty(path))
-						continue;
-
-					shellItems.Add(new ShellItem(path));
-					validPaths.Add(path);
-				}
-
-				if (shellItems.Count is 0)
-					return DROPEFFECT.DROPEFFECT_NONE;
-
-				return StartDragDrop(shellItems, validPaths, allowedEffects, isFromShelf);
-			}
-			catch (Exception ex)
-			{
-				App.Logger.LogWarning(ex, ex.Message);
-				return DROPEFFECT.DROPEFFECT_NONE;
-			}
-			finally
-			{
-				foreach (var item in shellItems)
-					item.Dispose();
-			}
+			string[] validPaths = paths.Where(path => !string.IsNullOrEmpty(path)).ToArray();
+			return QueueDragDrop(null, validPaths, allowedEffects, isFromShelf);
 		}
 
 		/// <summary>
-		/// Starts a modal Win32 OLE drag-and-drop operation for pre-constructed Shell items.
+		/// Copies Shell item identities so no Shell COM objects cross apartment boundaries.
 		/// </summary>
-		public static DROPEFFECT StartDragDrop(
+		public static Task<DROPEFFECT> StartDragDropAsync(
 			IReadOnlyList<ShellItem> shellItems,
 			IReadOnlyList<string> paths,
 			DROPEFFECT allowedEffects = DROPEFFECT.DROPEFFECT_COPY | DROPEFFECT.DROPEFFECT_MOVE | DROPEFFECT.DROPEFFECT_LINK,
 			bool isFromShelf = false)
 		{
-			if (shellItems.Count is 0)
-				return DROPEFFECT.DROPEFFECT_NONE;
-
-			MainWindow.Instance.SetCanWindowToFront(false);
-			_isDraggingFromShelf = isFromShelf;
 			try
 			{
-				EnsureRegistered(MainWindow.Instance.WindowHandle);
-				IDataObject dataObject = ShellDataObject.CreateForDrag(shellItems, paths);
-				var dropSource = new OleDropSource();
-				PInvoke.DoDragDrop(dataObject, dropSource, allowedEffects, out DROPEFFECT finalEffect);
-				return finalEffect;
+				ShellPidl[] itemPidls = shellItems.Select(item => item.PIDL).ToArray();
+				return QueueDragDrop(itemPidls, paths.ToArray(), allowedEffects, isFromShelf);
 			}
 			catch (Exception ex)
 			{
 				App.Logger.LogWarning(ex, ex.Message);
-				return DROPEFFECT.DROPEFFECT_NONE;
+				return Task.FromResult(DROPEFFECT.DROPEFFECT_NONE);
 			}
-			finally
+		}
+
+		private static Task<DROPEFFECT> QueueDragDrop(
+			ShellPidl[]? itemPidls,
+			string[] paths,
+			DROPEFFECT allowedEffects,
+			bool isFromShelf)
+		{
+			bool leftPressed = IsKeyDown(VirtualKey.LeftButton);
+			bool rightPressed = IsKeyDown(VirtualKey.RightButton);
+			if ((itemPidls?.Length ?? paths.Length) is 0 || leftPressed == rightPressed ||
+				Interlocked.CompareExchange(ref _dragInProgress, 1, 0) != 0)
 			{
+				return Task.FromResult(DROPEFFECT.DROPEFFECT_NONE);
+			}
+
+			var window = MainWindow.Instance;
+			var dispatcher = window.DispatcherQueue;
+			var completion = new TaskCompletionSource<DROPEFFECT>(TaskCreationOptions.RunContinuationsAsynchronously);
+			var operation = new DragOperation(leftPressed ? VirtualKey.LeftButton : VirtualKey.RightButton);
+			_activeDrag = operation;
+
+			void Complete(DROPEFFECT effect)
+			{
+				_activeDrag = null;
 				_isDraggingFromShelf = false;
-				MainWindow.Instance.SetCanWindowToFront(true);
+				window.SetCanWindowToFront(true);
+				Interlocked.Exchange(ref _dragInProgress, 0);
+				completion.TrySetResult(effect);
+			}
+
+			// Let XAML finish cancelling its gesture before OLE takes over input capture.
+			if (!dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () =>
+			{
+				try
+				{
+					if (!operation.CanStart())
+					{
+						Complete(DROPEFFECT.DROPEFFECT_NONE);
+						return;
+					}
+
+					EnsureRegistered(window.WindowHandle);
+					_isDraggingFromShelf = isFromShelf;
+					window.SetCanWindowToFront(false);
+					var thread = new Thread(() =>
+					{
+						DROPEFFECT effect = operation.Run(itemPidls, paths, allowedEffects);
+						if (!dispatcher.TryEnqueue(() => Complete(effect)))
+						{
+							// The window has shut down; there is no UI state left to restore.
+							Interlocked.Exchange(ref _dragInProgress, 0);
+							completion.TrySetResult(effect);
+						}
+					})
+					{
+						IsBackground = true,
+						Name = "Elevated OLE drag-and-drop",
+					};
+					thread.SetApartmentState(ApartmentState.STA);
+					thread.Start();
+				}
+				catch (Exception ex)
+				{
+					App.Logger.LogWarning(ex, ex.Message);
+					Complete(DROPEFFECT.DROPEFFECT_NONE);
+				}
+			}))
+			{
+				Complete(DROPEFFECT.DROPEFFECT_NONE);
+			}
+
+			return completion.Task;
+		}
+
+		private static bool IsKeyDown(VirtualKey key)
+			=> (PInvoke.GetAsyncKeyState((int)key) & 0x8000) != 0;
+
+		private static unsafe uint FindMouseInputThread()
+		{
+			HWND window = HWND.Null;
+			while (true)
+			{
+				window = PInvoke.FindWindowEx(new HWND(-3), window, "MITMessageOnlyWindowClass", null);
+				if (window.IsNull)
+					return 0;
+
+				uint processId = 0;
+				uint threadId = PInvoke.GetWindowThreadProcessId(window, &processId);
+				if (processId == (uint)Environment.ProcessId)
+					return threadId;
+			}
+		}
+
+		private sealed class DragOperation
+		{
+			private readonly object _inputLock = new();
+			private readonly VirtualKey _button;
+			private readonly VirtualKey _otherButton;
+			private readonly MODIFIERKEYS_FLAGS _buttonFlag;
+			private bool _cancelRequested;
+			private bool _hasContinued;
+			private bool _buttonReleased;
+			private bool _running;
+			private uint _threadId;
+
+			public DragOperation(VirtualKey button)
+			{
+				_button = button;
+				_otherButton = button == VirtualKey.LeftButton ? VirtualKey.RightButton : VirtualKey.LeftButton;
+				bool swapped = PInvoke.GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_SWAPBUTTON) != 0;
+				bool logicalRightButton = (button == VirtualKey.RightButton) != swapped;
+				_buttonFlag = logicalRightButton ? MODIFIERKEYS_FLAGS.MK_RBUTTON : MODIFIERKEYS_FLAGS.MK_LBUTTON;
+			}
+
+			public void Cancel()
+			{
+				lock (_inputLock)
+					_cancelRequested = true;
+			}
+
+			public bool CanStart()
+			{
+				lock (_inputLock)
+					return !_cancelRequested && IsKeyDown(_button) && !IsKeyDown(_otherButton) && !IsKeyDown(VirtualKey.Escape);
+			}
+
+			public unsafe DROPEFFECT Run(ShellPidl[]? itemPidls, string[] paths, DROPEFFECT allowedEffects)
+			{
+				bool oleInitialized = false;
+				bool inputAttached = false;
+				uint inputThreadId = 0;
+				var shellItems = new List<ShellItem>();
+				IDataObject? dataObject = null;
+				try
+				{
+					if (!CanStart())
+						return DROPEFFECT.DROPEFFECT_NONE;
+
+					PInvoke.OleInitialize(null).ThrowOnFailure();
+					oleInitialized = true;
+					PInvoke.PeekMessage(out _, HWND.Null, 0, 0, PEEK_MESSAGE_REMOVE_TYPE.PM_NOREMOVE);
+					_threadId = PInvoke.GetCurrentThreadId();
+					inputThreadId = FindMouseInputThread();
+					if (inputThreadId == 0 || !PInvoke.AttachThreadInput(_threadId, inputThreadId, true))
+					{
+						App.Logger.LogWarning("Cannot attach elevated OLE drag-and-drop to the WinUI mouse input thread.");
+						return DROPEFFECT.DROPEFFECT_NONE;
+					}
+					inputAttached = true;
+
+					if (itemPidls is not null)
+					{
+						foreach (var pidl in itemPidls)
+							shellItems.Add(ShellItem.Open(pidl));
+					}
+					else
+					{
+						foreach (string path in paths)
+							shellItems.Add(new ShellItem(path));
+					}
+
+					dataObject = ShellDataObject.CreateForDrag(shellItems, paths);
+					if (!CanStart())
+						return DROPEFFECT.DROPEFFECT_NONE;
+
+					var dropSource = new OleDropSource(this);
+					lock (_inputLock)
+						_running = true;
+					using var inputTimer = new Timer(UpdateInput, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(16));
+					try
+					{
+						HRESULT result = PInvoke.DoDragDrop(dataObject, dropSource, allowedEffects, out DROPEFFECT finalEffect);
+						result.ThrowOnFailure();
+						return result == HRESULT.DRAGDROP_S_DROP ? finalEffect : DROPEFFECT.DROPEFFECT_NONE;
+					}
+					finally
+					{
+						lock (_inputLock)
+							_running = false;
+					}
+				}
+				catch (Exception ex)
+				{
+					App.Logger.LogWarning(ex, ex.Message);
+					return DROPEFFECT.DROPEFFECT_NONE;
+				}
+				finally
+				{
+					if ((object?)dataObject is ComObject comObject)
+						comObject.FinalRelease();
+					foreach (var item in shellItems)
+						item.Dispose();
+					if (inputAttached)
+						PInvoke.AttachThreadInput(_threadId, inputThreadId, false);
+					if (oleInitialized)
+						PInvoke.OleUninitialize();
+				}
+			}
+
+			public HRESULT QueryContinueDrag(bool escapePressed)
+			{
+				lock (_inputLock)
+				{
+					if (_cancelRequested || escapePressed || IsKeyDown(VirtualKey.Escape) || IsKeyDown(_otherButton))
+						return HRESULT.DRAGDROP_S_CANCEL;
+
+					if (_buttonReleased || !IsKeyDown(_button))
+						return _hasContinued ? HRESULT.DRAGDROP_S_DROP : HRESULT.DRAGDROP_S_CANCEL;
+
+					_hasContinued = true;
+					return HRESULT.S_OK;
+				}
+			}
+
+			private unsafe void UpdateInput(object? state)
+			{
+				lock (_inputLock)
+				{
+					if (!_running)
+						return;
+
+					_buttonReleased |= !IsKeyDown(_button);
+					_cancelRequested |= IsKeyDown(VirtualKey.Escape) || IsKeyDown(_otherButton) || (_buttonReleased && !_hasContinued);
+					if (_cancelRequested || !PInvoke.GetCursorPos(out var screenPoint))
+					{
+						_cancelRequested = true;
+						// Init does not call IDropSource; Escape also wakes its filtered message loop.
+						PInvoke.PostThreadMessage(_threadId, PInvoke.WM_KEYDOWN, new WPARAM((nuint)VirtualKey.Escape), default);
+						return;
+					}
+
+					GUITHREADINFO threadInfo = new() { cbSize = (uint)sizeof(GUITHREADINFO) };
+					if (!PInvoke.GetGUIThreadInfo(_threadId, &threadInfo) || threadInfo.hwndCapture.IsNull ||
+						PInvoke.GetWindowThreadProcessId(threadInfo.hwndCapture, null) != _threadId)
+					{
+						return;
+					}
+
+					var clientPoint = screenPoint;
+					if (!PInvoke.ScreenToClient(threadInfo.hwndCapture, ref clientPoint))
+						return;
+
+					MODIFIERKEYS_FLAGS keys = _buttonReleased ? 0 : _buttonFlag;
+					if (IsKeyDown(VirtualKey.Control))
+						keys |= MODIFIERKEYS_FLAGS.MK_CONTROL;
+					if (IsKeyDown(VirtualKey.Shift))
+						keys |= MODIFIERKEYS_FLAGS.MK_SHIFT;
+
+					// Supplement WinUI's pointer-only stream without injecting global mouse input.
+					int coordinates = unchecked((ushort)clientPoint.X | ((ushort)clientPoint.Y << 16));
+					PInvoke.PostMessage(threadInfo.hwndCapture, PInvoke.WM_MOUSEMOVE, new WPARAM((nuint)keys), new LPARAM(coordinates));
+				}
 			}
 		}
 
@@ -215,16 +433,15 @@ namespace Files.App.Utils.Shell
 		[GeneratedComClass]
 		private sealed partial class OleDropSource : IDropSource
 		{
-			public HRESULT QueryContinueDrag(BOOL fEscapePressed, MODIFIERKEYS_FLAGS grfKeyState)
+			private readonly DragOperation _operation;
+
+			public OleDropSource(DragOperation operation)
 			{
-				if (fEscapePressed)
-					return HRESULT.DRAGDROP_S_CANCEL;
-
-				if ((grfKeyState & (MODIFIERKEYS_FLAGS.MK_LBUTTON | MODIFIERKEYS_FLAGS.MK_RBUTTON)) == 0)
-					return HRESULT.DRAGDROP_S_DROP;
-
-				return HRESULT.S_OK;
+				_operation = operation;
 			}
+
+			public HRESULT QueryContinueDrag(BOOL fEscapePressed, MODIFIERKEYS_FLAGS grfKeyState)
+				=> _operation.QueryContinueDrag(fEscapePressed);
 
 			public HRESULT GiveFeedback(DROPEFFECT dwEffect)
 				=> HRESULT.DRAGDROP_S_USEDEFAULTCURSORS;
