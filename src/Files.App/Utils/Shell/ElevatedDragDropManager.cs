@@ -16,7 +16,6 @@ using System.IO;
 using System.Runtime.InteropServices.Marshalling;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
-using Windows.System;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.Com;
@@ -25,6 +24,7 @@ using Windows.Win32.System.SystemServices;
 using Windows.Win32.UI.Shell;
 using Windows.Win32.UI.WindowsAndMessaging;
 using WinRT;
+using VirtualKey = Windows.System.VirtualKey;
 
 namespace Files.App.Utils.Shell
 {
